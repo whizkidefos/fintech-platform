@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="dashboard-grid">
+    <!-- Portfolio Summary -->
+    <div class="dashboard-card portfolio-summary">
+        <h3>Portfolio Summary</h3>
+        <div class="portfolio-stats">
+            <div class="stat">
+                <span class="stat-label">Total Value</span>
+                <span class="stat-value">$25,750.00</span>
+                <span class="stat-change positive">+2.5%</span>
+            </div>
+            <div class="stat">
+                <span class="stat-label">24h Change</span>
+                <span class="stat-value">+$643.75</span>
+                <span class="stat-change positive">+2.5%</span>
+            </div>
+        </div>
+        <div class="portfolio-chart">
+            <canvas id="portfolioChart"></canvas>
+        </div>
+    </div>
+
+    <!-- Active Signals -->
+    <div class="dashboard-card active-signals">
+        <h3>Active Signals</h3>
+        <div class="signals-list">
+            {% for signal in recent_signals %}
+            <div class="signal-item {{ signal.signal_type }}">
+                <div class="signal-icon">
+                    <i class="fas fa-{{ 'arrow-up' if signal.signal_type == 'buy' else 'arrow-down' }}"></i>
+                </div>
+                <div class="signal-details">
+                    <span class="signal-asset">{{ signal.asset.symbol }}</span>
+                    <span class="signal-type">{{ signal.signal_type.upper() }}</span>
+                    <span class="signal-strength">Strength: {{ signal.strength }}</span>
+                </div>
+                <div class="signal-time">
+                    {{ signal.created_at.strftime('%H:%M') }}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Watchlist -->
+    <div class="dashboard-card watchlist">
+        <h3>Watchlist</h3>
+        <div class="watchlist-items">
+            {% for asset in watchlist %}
+            <div class="watchlist-item">
+                <div class="asset-info">
+                    <span class="asset-symbol">{{ asset.symbol }}</span>
+                    <span class="asset-name">{{ asset.name }}</span>
+                </div>
+                <div class="asset-price">
+                    <span class="price">${{ "%.2f"|format(asset.current_price) }}</span>
+                    <span class="price-change positive">+2.5%</span>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Recent Transactions -->
+    <div class="dashboard-card recent-transactions">
+        <h3>Recent Transactions</h3>
+        <div class="transactions-list">
+            <!-- Add transaction items here -->
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Initialize portfolio chart
+    const ctx = document.getElementById('portfolioChart').getContext('2d');
+    new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+            datasets: [{
+                label: 'Portfolio Value',
+                data: [24500, 24800, 24600, 25100, 25400, 25200, 25750],
+                borderColor: 'rgb(75, 192, 192)',
+                tension: 0.4
+            }]
+        },
+        options: {
+            scales: {
+                y: {
+                    beginAtZero: true
+                }
+            }
+        }
+    });
+});
+</script>
+{% endblock %}

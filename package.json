@@ -1,0 +1,12 @@
+{
+    "name": "fintech-platform",
+    "version": "1.0.0",
+    "scripts": {
+      "sass-watch": "sass --watch app/static/scss/main.scss:app/static/css/main.css",
+      "dev": "concurrently \"python run.py\" \"npm run sass-watch\""
+    },
+    "devDependencies": {
+      "sass": "^1.69.0",
+      "concurrently": "^8.2.1"
+    }
+  }

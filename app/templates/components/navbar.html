@@ -1,0 +1,19 @@
+<nav class="navbar">
+    <div class="navbar-brand">
+        <a href="{{ url_for('dashboard.index') }}">Trading Platform</a>
+    </div>
+    
+    <div class="navbar-menu">
+        {% if current_user.is_authenticated %}
+            <button id="theme-toggle" class="theme-toggle">
+                <i class="fas fa-moon"></i>
+            </button>
+            <div class="user-menu">
+                <span>{{ current_user.username }}</span>
+                <a href="{{ url_for('auth.logout') }}" class="logout-btn">
+                    <i class="fas fa-sign-out-alt"></i> Logout
+                </a>
+            </div>
+        {% endif %}
+    </div>
+</nav>

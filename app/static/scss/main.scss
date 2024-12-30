@@ -1,0 +1,27 @@
+@import 'base/variables';
+@import 'base/reset';
+@import 'base/typography';
+@import 'components/buttons';
+@import 'components/cards';
+@import 'components/charts';
+@import 'themes/light';
+@import 'themes/dark';
+
+// Base styles
+body {
+    font-family: $font-family-base;
+    font-size: $font-size-base;
+    line-height: $line-height-base;
+    transition: background-color 0.3s ease, color 0.3s ease;
+  }
+  
+  // Theme handling
+  body[data-theme="light"] {
+    background-color: $light-background;
+    color: $light-text;
+  }
+  
+  body[data-theme="dark"] {
+    background-color: $dark-background;
+    color: $dark-text;
+  }
