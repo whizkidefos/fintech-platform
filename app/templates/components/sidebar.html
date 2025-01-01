@@ -1,0 +1,58 @@
+<aside class="sidebar">
+    <nav class="sidebar-nav">
+        <div class="sidebar-header">
+            <span class="sidebar-title">Navigation</span>
+        </div>
+        
+        <ul class="nav-list">
+            <li class="nav-item {% if request.endpoint == 'dashboard.index' %}active{% endif %}">
+                <a href="{{ url_for('dashboard.index') }}">
+                    <i class="fas fa-chart-line"></i>
+                    <span>Dashboard</span>
+                </a>
+            </li>
+            
+            <li class="nav-item {% if request.endpoint == 'dashboard.portfolio' %}active{% endif %}">
+                <a href="{{ url_for('dashboard.index') }}">
+                    <i class="fas fa-briefcase"></i>
+                    <span>Portfolio</span>
+                </a>
+            </li>
+            
+            <li class="nav-item {% if request.endpoint == 'dashboard.watchlist' %}active{% endif %}">
+                <a href="{{ url_for('dashboard.index') }}">
+                    <i class="fas fa-star"></i>
+                    <span>Watchlist</span>
+                </a>
+            </li>
+            
+            <li class="nav-item {% if request.endpoint == 'dashboard.signals' %}active{% endif %}">
+                <a href="{{ url_for('dashboard.index') }}">
+                    <i class="fas fa-bell"></i>
+                    <span>Signals</span>
+                </a>
+            </li>
+            
+            <li class="nav-item {% if request.endpoint == 'dashboard.transactions' %}active{% endif %}">
+                <a href="{{ url_for('dashboard.index') }}">
+                    <i class="fas fa-exchange-alt"></i>
+                    <span>Transactions</span>
+                </a>
+            </li>
+        </ul>
+        
+        <div class="sidebar-footer">
+            <div class="user-info">
+                {% if current_user.is_authenticated %}
+                    <div class="user-avatar">
+                        <i class="fas fa-user-circle"></i>
+                    </div>
+                    <div class="user-details">
+                        <span class="username">{{ current_user.username }}</span>
+                        <span class="user-role">Trader</span>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </nav>
+</aside>

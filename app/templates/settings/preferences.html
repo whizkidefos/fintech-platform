@@ -1,0 +1,271 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="preferences-container">
+    <div class="preferences-header">
+        <h1>User Preferences</h1>
+    </div>
+
+    <div class="preferences-grid">
+        <!-- Interface Settings -->
+        <div class="card">
+            <div class="card-header">
+                <h2>Interface Settings</h2>
+            </div>
+            <div class="card-body">
+                <form id="interfaceForm" class="settings-form">
+                    <div class="form-group">
+                        <label for="theme">Theme</label>
+                        <select id="theme" name="theme">
+                            <option value="light">Light</option>
+                            <option value="dark">Dark</option>
+                            <option value="system">System Default</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="defaultTimeframe">Default Timeframe</label>
+                        <select id="defaultTimeframe" name="default_timeframe">
+                            <option value="1m">1 Minute</option>
+                            <option value="5m">5 Minutes</option>
+                            <option value="15m">15 Minutes</option>
+                            <option value="1h">1 Hour</option>
+                            <option value="4h">4 Hours</option>
+                            <option value="1d">1 Day</option>
+                        </select>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary">Save Interface Settings</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Trading Settings -->
+        <div class="card">
+            <div class="card-header">
+                <h2>Trading Settings</h2>
+            </div>
+            <div class="card-body">
+                <form id="tradingForm" class="settings-form">
+                    <div class="form-group">
+                        <label for="riskLevel">Risk Level</label>
+                        <select id="riskLevel" name="risk_level">
+                            <option value="conservative">Conservative</option>
+                            <option value="moderate">Moderate</option>
+                            <option value="aggressive">Aggressive</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="maxOpenTrades">Maximum Open Trades</label>
+                        <input type="number" id="maxOpenTrades" name="max_open_trades" min="1" max="10" value="5">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Trading Pairs</label>
+                        <div class="trading-pairs-selector">
+                            {% for pair in available_pairs %}
+                            <div class="checkbox-wrapper">
+                                <input type="checkbox" id="pair_{{ pair.symbol }}" name="trading_pairs[]" 
+                                       value="{{ pair.symbol }}" {% if pair.symbol in user_preferences.trading_pairs %}checked{% endif %}>
+                                <label for="pair_{{ pair.symbol }}">{{ pair.symbol }}</label>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <div class="checkbox-wrapper">
+                            <input type="checkbox" id="tradingEnabled" name="trading_enabled">
+                            <label for="tradingEnabled">Enable Automated Trading</label>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary">Save Trading Settings</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Notification Settings -->
+        <div class="card">
+            <div class="card-header">
+                <h2>Notification Settings</h2>
+            </div>
+            <div class="card-body">
+                <form id="notificationForm" class="settings-form">
+                    <div class="form-group">
+                        <div class="checkbox-wrapper">
+                            <input type="checkbox" id="notificationsEnabled" name="notifications_enabled">
+                            <label for="notificationsEnabled">Enable Notifications</label>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <div class="checkbox-wrapper">
+                            <input type="checkbox" id="emailNotifications" name="email_notifications">
+                            <label for="emailNotifications">Email Notifications</label>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="webhookUrl">Webhook URL (Optional)</label>
+                        <input type="url" id="webhookUrl" name="webhook_url" placeholder="https://...">
+                        <small class="help-text">Receive notifications via webhook</small>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary">Save Notification Settings</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block styles %}
+<style>
+.preferences-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 2rem;
+}
+
+.preferences-header {
+    margin-bottom: 2rem;
+}
+
+.preferences-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+    gap: 2rem;
+}
+
+.settings-form {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.trading-pairs-selector {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 0.5rem;
+    max-height: 200px;
+    overflow-y: auto;
+    padding: 0.5rem;
+    border: 1px solid var(--border-color);
+    border-radius: 0.375rem;
+}
+
+.checkbox-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.checkbox-wrapper input[type="checkbox"] {
+    accent-color: var(--primary-color);
+}
+
+.help-text {
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+}
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Load user preferences
+async function loadPreferences() {
+    try {
+        const response = await fetch('/api/alerts/preferences');
+        const data = await response.json();
+        
+        if (data.status === 'success') {
+            populateFormValues(data.data);
+        }
+    } catch (error) {
+        showError('Failed to load preferences');
+    }
+}
+
+function populateFormValues(preferences) {
+    // Interface settings
+    document.getElementById('theme').value = preferences.theme;
+    document.getElementById('defaultTimeframe').value = preferences.default_timeframe;
+    
+    // Trading settings
+    document.getElementById('riskLevel').value = preferences.risk_level;
+    document.getElementById('maxOpenTrades').value = preferences.max_open_trades;
+    document.getElementById('tradingEnabled').checked = preferences.trading_enabled;
+    
+    // Notification settings
+    document.getElementById('notificationsEnabled').checked = preferences.notifications_enabled;
+    document.getElementById('emailNotifications').checked = preferences.email_notifications;
+    if (preferences.webhook_url) {
+        document.getElementById('webhookUrl').value = preferences.webhook_url;
+    }
+}
+
+// Save settings
+async function saveSettings(formId, endpoint) {
+    const form = document.getElementById(formId);
+    const formData = new FormData(form);
+    const data = Object.fromEntries(formData.entries());
+    
+    try {
+        const response = await fetch(endpoint, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(data)
+        });
+        
+        const result = await response.json();
+        
+        if (result.status === 'success') {
+            showSuccess('Settings saved successfully');
+        } else {
+            showError(result.message);
+        }
+    } catch (error) {
+        showError('Failed to save settings');
+    }
+}
+
+// Form submissions
+document.getElementById('interfaceForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    await saveSettings('interfaceForm', '/api/alerts/preferences');
+});
+
+document.getElementById('tradingForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    await saveSettings('tradingForm', '/api/alerts/preferences');
+});
+
+document.getElementById('notificationForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    await saveSettings('notificationForm', '/api/alerts/preferences');
+});
+
+// Load preferences on page load
+document.addEventListener('DOMContentLoaded', loadPreferences);
+
+// Notifications
+function showSuccess(message) {
+    // Implement your success notification system
+}
+
+function showError(message) {
+    // Implement your error notification system
+}
+</script>
+{% endblock %}

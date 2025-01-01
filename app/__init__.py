@@ -3,11 +3,18 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager
 from flask_migrate import Migrate
 from config import Config
-from app.websocket import init_websocket
+import atexit
 
 db = SQLAlchemy()
 login_manager = LoginManager()
 migrate = Migrate()
+
+def cleanup_resources():
+    """Cleanup function to be called on application exit"""
+    try:
+        db.session.remove()
+    except Exception as e:
+        print(f"Cleanup error: {e}")
 
 def create_app(config_class=Config):
     app = Flask(__name__)
@@ -20,12 +27,24 @@ def create_app(config_class=Config):
     login_manager.login_view = 'auth.login'
     login_manager.login_message_category = 'info'
 
+    # Register cleanup function
+    atexit.register(cleanup_resources)
+
+    # Register blueprints
     from app.routes import auth, dashboard, api
     app.register_blueprint(auth.bp)
     app.register_blueprint(dashboard.bp)
     app.register_blueprint(api.bp)
-    
-    # Initialize WebSocket
-    init_websocket(app)
+
+    # Initialize WebSocket after blueprints
+    try:
+        from app.websocket import init_websocket
+        init_websocket(app)
+    except Exception as e:
+        print(f"WebSocket initialization failed: {e}")
+
+    @app.route('/health')
+    def health_check():
+        return {'status': 'healthy'}, 200
 
     return app

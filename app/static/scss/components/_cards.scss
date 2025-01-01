@@ -1,0 +1,22 @@
+@use '../base/variables' as *;
+
+.card {
+    background-color: var(--card-bg);
+    border-radius: 0.5rem;
+    box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1);
+    overflow: hidden;
+    
+    &-header {
+        padding: $spacing-base;
+        border-bottom: 1px solid var(--border-color);
+    }
+    
+    &-body {
+        padding: $spacing-base;
+    }
+    
+    &-footer {
+        padding: $spacing-base;
+        border-top: 1px solid var(--border-color);
+    }
+}

@@ -1,0 +1,117 @@
+.sidebar {
+    width: 260px;
+    height: 100vh;
+    background-color: var(--sidebar-bg);
+    border-right: 1px solid var(--border-color);
+    transition: all 0.3s ease;
+    
+    .sidebar-nav {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+    }
+    
+    .sidebar-header {
+        padding: 1.5rem;
+        border-bottom: 1px solid var(--border-color);
+        
+        .sidebar-title {
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+    }
+    
+    .nav-list {
+        padding: 1rem 0;
+        list-style: none;
+        
+        .nav-item {
+            position: relative;
+            
+            a {
+                display: flex;
+                align-items: center;
+                padding: 0.75rem 1.5rem;
+                color: var(--text-secondary);
+                text-decoration: none;
+                transition: all 0.3s ease;
+                
+                i {
+                    width: 20px;
+                    margin-right: 0.75rem;
+                    font-size: 1.1rem;
+                }
+                
+                span {
+                    font-size: 0.9rem;
+                }
+                
+                &:hover {
+                    color: var(--text-primary);
+                    background-color: var(--hover-bg);
+                }
+            }
+            
+            &.active {
+                a {
+                    color: var(--primary-color);
+                    background-color: var(--active-bg);
+                    
+                    &::before {
+                        content: '';
+                        position: absolute;
+                        left: 0;
+                        top: 0;
+                        height: 100%;
+                        width: 4px;
+                        background-color: var(--primary-color);
+                    }
+                }
+            }
+        }
+    }
+    
+    .sidebar-footer {
+        margin-top: auto;
+        padding: 1rem 1.5rem;
+        border-top: 1px solid var(--border-color);
+        
+        .user-info {
+            display: flex;
+            align-items: center;
+            
+            .user-avatar {
+                width: 36px;
+                height: 36px;
+                margin-right: 0.75rem;
+                border-radius: 50%;
+                background-color: var(--hover-bg);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                
+                i {
+                    font-size: 1.5rem;
+                    color: var(--text-secondary);
+                }
+            }
+            
+            .user-details {
+                display: flex;
+                flex-direction: column;
+                
+                .username {
+                    font-size: 0.9rem;
+                    font-weight: 600;
+                    color: var(--text-primary);
+                }
+                
+                .user-role {
+                    font-size: 0.8rem;
+                    color: var(--text-secondary);
+                }
+            }
+        }
+    }
+}

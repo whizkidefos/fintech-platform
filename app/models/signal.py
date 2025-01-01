@@ -1,3 +1,6 @@
+from app import db
+from datetime import datetime
+
 class TradingSignal(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     asset_id = db.Column(db.Integer, db.ForeignKey('asset.id'), nullable=False)

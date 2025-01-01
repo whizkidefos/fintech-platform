@@ -1,0 +1,33 @@
+[data-theme="dark"] {
+    // Base colors
+    --background-color: #111827;
+    --text-color: #f9fafb;
+    
+    // Component colors
+    --navbar-bg: #1f2937;
+    --sidebar-bg: #1f2937;
+    --card-bg: #1f2937;
+    
+    // Text colors
+    --text-primary: #f9fafb;
+    --text-secondary: #9ca3af;
+    
+    // Border and divider
+    --border-color: #374151;
+    
+    // Interactive states
+    --hover-bg: #374151;
+    --active-bg: #4b5563;
+    
+    // Brand colors
+    --primary-color: #3b82f6;
+    --primary-color-dark: #2563eb;
+    --secondary-color: #9ca3af;
+    --secondary-color-dark: #6b7280;
+    
+    // Feedback colors
+    --success-color: #34d399;
+    --danger-color: #f87171;
+    --warning-color: #fbbf24;
+    --info-color: #60a5fa;
+}

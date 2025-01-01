@@ -1,0 +1,400 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="alerts-container">
+    <!-- Alert Rules Section -->
+    <div class="card">
+        <div class="card-header">
+            <h2>Alert Rules</h2>
+            <button class="btn btn-primary" onclick="openNewRuleModal()">
+                <i class="fas fa-plus"></i> New Rule
+            </button>
+        </div>
+        <div class="card-body">
+            <div class="alert-rules-list">
+                {% for rule in alert_rules %}
+                <div class="alert-rule-item {% if rule.enabled %}active{% endif %}">
+                    <div class="rule-info">
+                        <span class="rule-asset">{{ rule.asset.symbol }}</span>
+                        <span class="rule-condition">
+                            {{ rule.rule_type }} {{ rule.condition }} {{ rule.value }}
+                        </span>
+                    </div>
+                    <div class="rule-actions">
+                        <button class="btn-icon" onclick="toggleRule({{ rule.id }})">
+                            <i class="fas fa-{% if rule.enabled %}toggle-on{% else %}toggle-off{% endif %}"></i>
+                        </button>
+                        <button class="btn-icon" onclick="editRule({{ rule.id }})">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        <button class="btn-icon text-danger" onclick="deleteRule({{ rule.id }})">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Notifications Section -->
+    <div class="card mt-4">
+        <div class="card-header">
+            <h2>Notifications</h2>
+            <div class="header-actions">
+                <button class="btn btn-outline" onclick="markAllRead()">
+                    Mark All Read
+                </button>
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="notifications-list">
+                {% for alert in alerts %}
+                <div class="notification-item {% if not alert.read %}unread{% endif %}">
+                    <div class="notification-icon">
+                        <i class="fas fa-{{ alert.priority_icon }}"></i>
+                    </div>
+                    <div class="notification-content">
+                        <div class="notification-message">{{ alert.message }}</div>
+                        <div class="notification-meta">
+                            <span class="notification-time">{{ alert.created_at|timeago }}</span>
+                            <span class="notification-priority {{ alert.priority }}">
+                                {{ alert.priority }}
+                            </span>
+                        </div>
+                    </div>
+                    <div class="notification-actions">
+                        <button class="btn-icon" onclick="markRead({{ alert.id }})">
+                            <i class="fas fa-check"></i>
+                        </button>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- New Alert Rule Modal -->
+<div id="newRuleModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>Create Alert Rule</h3>
+            <button class="close-btn" onclick="closeNewRuleModal()">×</button>
+        </div>
+        <div class="modal-body">
+            <form id="newRuleForm">
+                <div class="form-group">
+                    <label for="asset">Asset</label>
+                    <select id="asset" name="asset_id" required>
+                        {% for asset in assets %}
+                        <option value="{{ asset.id }}">{{ asset.symbol }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="ruleType">Rule Type</label>
+                    <select id="ruleType" name="rule_type" required>
+                        <option value="price">Price</option>
+                        <option value="volume">Volume</option>
+                        <option value="indicator">Indicator</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="condition">Condition</label>
+                    <select id="condition" name="condition" required>
+                        <option value="above">Above</option>
+                        <option value="below">Below</option>
+                        <option value="crosses">Crosses</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="value">Value</label>
+                    <input type="number" id="value" name="value" step="0.0001" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="timeframe">Timeframe</label>
+                    <select id="timeframe" name="timeframe">
+                        <option value="1m">1 minute</option>
+                        <option value="5m">5 minutes</option>
+                        <option value="15m">15 minutes</option>
+                        <option value="1h" selected>1 hour</option>
+                        <option value="4h">4 hours</option>
+                        <option value="1d">1 day</option>
+                    </select>
+                </div>
+
+                <button type="submit" class="btn btn-primary">Create Alert Rule</button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block styles %}
+<style>
+    .alerts-container {
+        padding: 1rem;
+        max-width: 1200px;
+        margin: 0 auto;
+    }
+
+    .alert-rule-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 1rem;
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    .alert-rule-item:last-child {
+        border-bottom: none;
+    }
+
+    .rule-info {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+    }
+
+    .rule-asset {
+        font-weight: 600;
+        color: var(--primary-color);
+    }
+
+    .rule-condition {
+        color: var(--text-secondary);
+    }
+
+    .rule-actions {
+        display: flex;
+        gap: 0.5rem;
+    }
+
+    .notification-item {
+        display: flex;
+        align-items: flex-start;
+        padding: 1rem;
+        border-bottom: 1px solid var(--border-color);
+        transition: background-color 0.2s ease;
+    }
+
+    .notification-item.unread {
+        background-color: var(--hover-bg);
+    }
+
+    .notification-icon {
+        padding: 0.5rem;
+        margin-right: 1rem;
+    }
+
+    .notification-content {
+        flex: 1;
+    }
+
+    .notification-meta {
+        display: flex;
+        gap: 1rem;
+        margin-top: 0.5rem;
+        font-size: 0.875rem;
+        color: var(--text-secondary);
+    }
+
+    .notification-priority {
+        padding: 0.25rem 0.5rem;
+        border-radius: 0.25rem;
+        text-transform: capitalize;
+    }
+
+    .notification-priority.high {
+        background-color: var(--danger-color);
+        color: white;
+    }
+
+    .notification-priority.medium {
+        background-color: var(--warning-color);
+        color: white;
+    }
+
+    .notification-priority.low {
+        background-color: var(--success-color);
+        color: white;
+    }
+
+    .modal {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.5);
+        z-index: 1000;
+    }
+
+    .modal-content {
+        background-color: var(--card-bg);
+        margin: 10% auto;
+        padding: 2rem;
+        border-radius: 0.5rem;
+        max-width: 500px;
+        position: relative;
+    }
+
+    .close-btn {
+        position: absolute;
+        right: 1rem;
+        top: 1rem;
+        font-size: 1.5rem;
+        cursor: pointer;
+        background: none;
+        border: none;
+        color: var(--text-secondary);
+    }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Alert Rule Management
+async function createAlertRule(data) {
+    try {
+        const response = await fetch('/api/alerts/rules', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(data)
+        });
+        
+        const result = await response.json();
+        
+        if (result.status === 'success') {
+            location.reload();
+        } else {
+            showError(result.message);
+        }
+    } catch (error) {
+        showError('Failed to create alert rule');
+    }
+}
+
+async function deleteRule(ruleId) {
+    if (!confirm('Are you sure you want to delete this alert rule?')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/alerts/rules/${ruleId}`, {
+            method: 'DELETE'
+        });
+        
+        const result = await response.json();
+        
+        if (result.status === 'success') {
+            location.reload();
+        } else {
+            showError(result.message);
+        }
+    } catch (error) {
+        showError('Failed to delete alert rule');
+    }
+}
+
+async function toggleRule(ruleId) {
+    try {
+        const response = await fetch(`/api/alerts/rules/${ruleId}/toggle`, {
+            method: 'POST'
+        });
+        
+        const result = await response.json();
+        
+        if (result.status === 'success') {
+            location.reload();
+        } else {
+            showError(result.message);
+        }
+    } catch (error) {
+        showError('Failed to toggle alert rule');
+    }
+}
+
+// Modal Management
+function openNewRuleModal() {
+    document.getElementById('newRuleModal').style.display = 'block';
+}
+
+function closeNewRuleModal() {
+    document.getElementById('newRuleModal').style.display = 'none';
+}
+
+// Form Handling
+document.getElementById('newRuleForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const formData = new FormData(e.target);
+    const data = Object.fromEntries(formData.entries());
+    
+    await createAlertRule(data);
+});
+
+// Notification Management
+async function markRead(alertId) {
+    try {
+        const response = await fetch('/api/alerts/notifications/mark-read', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                alert_ids: [alertId]
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.status === 'success') {
+            location.reload();
+        } else {
+            showError(result.message);
+        }
+    } catch (error) {
+        showError('Failed to mark notification as read');
+    }
+}
+
+async function markAllRead() {
+    try {
+        const response = await fetch('/api/alerts/notifications/mark-read', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                alert_ids: 'all'
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.status === 'success') {
+            location.reload();
+        } else {
+            showError(result.message);
+        }
+    } catch (error) {
+        showError('Failed to mark all notifications as read');
+    }
+}
+
+// Error Handling
+function showError(message) {
+    // Implement your error notification system here
+    alert(message);
+}
+</script>
+{% endblock %}

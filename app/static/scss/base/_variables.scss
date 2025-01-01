@@ -1,28 +1,38 @@
 // Colors
-$primary-color: #2196f3;
-$secondary-color: #6c757d;
-$success-color: #4caf50;
-$danger-color: #f44336;
-$warning-color: #ff9800;
-$info-color: #00bcd4;
-
-// Theme colors
-$light-background: #ffffff;
-$light-text: #333333;
-$dark-background: #1a1a1a;
-$dark-text: #ffffff;
+$primary-color: #2563eb;
+$secondary-color: #6b7280;
+$success-color: #10b981;
+$danger-color: #ef4444;
+$warning-color: #f59e0b;
+$info-color: #3b82f6;
 
 // Typography
-$font-family-base: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+$font-family-base: 'Inter', system-ui, -apple-system, sans-serif;
 $font-size-base: 1rem;
+$font-size-sm: 0.875rem;
+$font-size-lg: 1.125rem;
 $line-height-base: 1.5;
 
 // Spacing
-$spacing-unit: 0.25rem;
-$container-padding: $spacing-unit * 4;
+$spacing-base: 1rem;
+$spacing-xs: $spacing-base * 0.25;
+$spacing-sm: $spacing-base * 0.5;
+$spacing-md: $spacing-base;
+$spacing-lg: $spacing-base * 1.5;
+$spacing-xl: $spacing-base * 2;
 
 // Breakpoints
-$breakpoint-sm: 576px;
+$breakpoint-sm: 640px;
 $breakpoint-md: 768px;
-$breakpoint-lg: 992px;
-$breakpoint-xl: 1200px;
+$breakpoint-lg: 1024px;
+$breakpoint-xl: 1280px;
+$breakpoint-2xl: 1536px;
+
+// z-index
+$z-index-dropdown: 1000;
+$z-index-sticky: 1020;
+$z-index-fixed: 1030;
+$z-index-modal-backdrop: 1040;
+$z-index-modal: 1050;
+$z-index-popover: 1060;
+$z-index-tooltip: 1070;
