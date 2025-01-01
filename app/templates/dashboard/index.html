@@ -1,103 +1,386 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="dashboard-grid">
-    <!-- Portfolio Summary -->
-    <div class="dashboard-card portfolio-summary">
-        <h3>Portfolio Summary</h3>
-        <div class="portfolio-stats">
-            <div class="stat">
-                <span class="stat-label">Total Value</span>
-                <span class="stat-value">$25,750.00</span>
-                <span class="stat-change positive">+2.5%</span>
+<div class="dashboard-container">
+    <!-- Portfolio Overview Section -->
+    <div class="dashboard-grid">
+        <div class="card portfolio-summary">
+            <div class="card-header">
+                <h2>Portfolio Overview</h2>
+                <div class="card-actions">
+                    <select id="timeframeSelector" class="select-sm">
+                        <option value="1d">24h</option>
+                        <option value="7d">7d</option>
+                        <option value="30d">30d</option>
+                        <option value="all">All</option>
+                    </select>
+                </div>
             </div>
-            <div class="stat">
-                <span class="stat-label">24h Change</span>
-                <span class="stat-value">+$643.75</span>
-                <span class="stat-change positive">+2.5%</span>
+            <div class="card-body">
+                <div class="portfolio-stats">
+                    <div class="stat-item">
+                        <span class="stat-label">Total Value</span>
+                        <span class="stat-value">${{ '%0.2f' | format(portfolio.total_value|float) }}</span>
+                        <span class="stat-change {{ 'positive' if portfolio.daily_change >= 0 else 'negative' }}">
+                            {{ '%0.2f' | format(portfolio.daily_change|float) }}%
+                        </span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">24h Profit/Loss</span>
+                        <span class="stat-value {{ 'positive' if portfolio.daily_pnl >= 0 else 'negative' }}">
+                            ${{ '%0.2f' | format(portfolio.daily_pnl|float) }}
+                        </span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Open Positions</span>
+                        <span class="stat-value">{{ portfolio.open_positions }}</span>
+                    </div>
+                </div>
+                <div class="portfolio-chart">
+                    <canvas id="portfolioChart"></canvas>
+                </div>
             </div>
         </div>
-        <div class="portfolio-chart">
-            <canvas id="portfolioChart"></canvas>
+
+        <!-- Active Positions -->
+        <div class="card active-positions">
+            <div class="card-header">
+                <h2>Active Positions</h2>
+                <button class="btn btn-primary btn-sm" onclick="openNewPositionModal()">
+                    <i class="fas fa-plus"></i> New Position
+                </button>
+            </div>
+            <div class="card-body">
+                <div class="positions-list">
+                    {% for position in positions %}
+                    <div class="position-item">
+                        <div class="position-info">
+                            <div class="position-asset">
+                                <span class="asset-symbol">{{ position.symbol }}</span>
+                                <span class="position-type {{ position.type }}">{{ position.type }}</span>
+                            </div>
+                            <div class="position-details">
+                                <div class="detail-row">
+                                    <span class="detail-label">Entry</span>
+                                    <span class="detail-value">${{ '%0.2f' | format(position.entry_price|float) }}</span>
+                                </div>
+                                <div class="detail-row">
+                                    <span class="detail-label">Current</span>
+                                    <span class="detail-value">${{ '%0.2f' | format(position.current_price|float) }}</span>
+                                </div>
+                                <div class="detail-row">
+                                    <span class="detail-label">Size</span>
+                                    <span class="detail-value">{{ position.size }}</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="position-pnl {{ 'positive' if position.pnl >= 0 else 'negative' }}">
+                            <span class="pnl-value">${{ '%0.2f' | format(position.pnl|float) }}</span>
+                            <span class="pnl-percent">{{ '%0.2f' | format(position.pnl_percent|float) }}%</span>
+                        </div>
+                        <div class="position-actions">
+                            <button class="btn btn-danger btn-sm" onclick="closePosition('{{ position.id }}')">
+                                Close
+                            </button>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Recent Signals -->
+        <div class="card trading-signals">
+            <div class="card-header">
+                <h2>Trading Signals</h2>
+                <div class="card-actions">
+                    <button class="btn btn-outline btn-sm" onclick="refreshSignals()">
+                        <i class="fas fa-sync"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="signals-list">
+                    {% for signal in signals %}
+                    <div class="signal-item {{ signal.type }}">
+                        <div class="signal-info">
+                            <span class="signal-asset">{{ signal.symbol }}</span>
+                            <span class="signal-indicator">{{ signal.indicator }}</span>
+                        </div>
+                        <div class="signal-details">
+                            <span class="signal-type">{{ signal.type|upper }}</span>
+                            <span class="signal-time">{{ signal.timestamp|timeago }}</span>
+                        </div>
+                        <div class="signal-strength">
+                            <div class="strength-bar" style="width: {{ signal.strength * 100 }}%"></div>
+                        </div>
+                        <div class="signal-actions">
+                            <button class="btn btn-primary btn-sm" onclick="executeSignal('{{ signal.id }}')">
+                                Execute
+                            </button>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Market Overview -->
+        <div class="card market-overview">
+            <div class="card-header">
+                <h2>Market Overview</h2>
+                <div class="card-actions">
+                    <input type="text" class="input-sm" placeholder="Search assets...">
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="market-list">
+                    {% for asset in market_data %}
+                    <div class="market-item">
+                        <div class="asset-info">
+                            <span class="asset-symbol">{{ asset.symbol }}</span>
+                            <span class="asset-name">{{ asset.name }}</span>
+                        </div>
+                        <div class="asset-price">
+                            <span class="price-value">${{ '%0.2f' | format(asset.price|float) }}</span>
+                            <span class="price-change {{ 'positive' if asset.change >= 0 else 'negative' }}">
+                                {{ '%0.2f' | format(asset.change|float) }}%
+                            </span>
+                        </div>
+                        <div class="asset-volume">
+                            <span class="volume-label">Vol</span>
+                            <span class="volume-value">{{ asset.volume|format_number }}</span>
+                        </div>
+                        <div class="asset-actions">
+                            <button class="btn btn-outline btn-sm" onclick="addToWatchlist('{{ asset.symbol }}')">
+                                <i class="fas fa-star"></i>
+                            </button>
+                            <button class="btn btn-primary btn-sm" onclick="openTradeModal('{{ asset.symbol }}')">
+                                Trade
+                            </button>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
         </div>
     </div>
+</div>
 
-    <!-- Active Signals -->
-    <div class="dashboard-card active-signals">
-        <h3>Active Signals</h3>
-        <div class="signals-list">
-            {% for signal in recent_signals %}
-            <div class="signal-item {{ signal.signal_type }}">
-                <div class="signal-icon">
-                    <i class="fas fa-{{ 'arrow-up' if signal.signal_type == 'buy' else 'arrow-down' }}"></i>
-                </div>
-                <div class="signal-details">
-                    <span class="signal-asset">{{ signal.asset.symbol }}</span>
-                    <span class="signal-type">{{ signal.signal_type.upper() }}</span>
-                    <span class="signal-strength">Strength: {{ signal.strength }}</span>
-                </div>
-                <div class="signal-time">
-                    {{ signal.created_at.strftime('%H:%M') }}
-                </div>
-            </div>
-            {% endfor %}
+<!-- New Position Modal -->
+<div id="newPositionModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>New Position</h3>
+            <button class="close-btn" onclick="closeNewPositionModal()">×</button>
         </div>
-    </div>
-
-    <!-- Watchlist -->
-    <div class="dashboard-card watchlist">
-        <h3>Watchlist</h3>
-        <div class="watchlist-items">
-            {% for asset in watchlist %}
-            <div class="watchlist-item">
-                <div class="asset-info">
-                    <span class="asset-symbol">{{ asset.symbol }}</span>
-                    <span class="asset-name">{{ asset.name }}</span>
-                </div>
-                <div class="asset-price">
-                    <span class="price">${{ "%.2f"|format(asset.current_price) }}</span>
-                    <span class="price-change positive">+2.5%</span>
-                </div>
-            </div>
-            {% endfor %}
-        </div>
-    </div>
-
-    <!-- Recent Transactions -->
-    <div class="dashboard-card recent-transactions">
-        <h3>Recent Transactions</h3>
-        <div class="transactions-list">
-            <!-- Add transaction items here -->
+        <div class="modal-body">
+            <form id="newPositionForm">
+                <!-- Form content will be dynamically populated -->
+            </form>
         </div>
     </div>
 </div>
 {% endblock %}
 
+{% block styles %}
+<style>
+.dashboard-container {
+    padding: 1.5rem;
+}
+
+.dashboard-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+    gap: 1.5rem;
+}
+
+.portfolio-summary {
+    grid-column: 1 / -1;
+}
+
+.portfolio-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.stat-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.stat-label {
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+}
+
+.stat-value {
+    font-size: 1.5rem;
+    font-weight: 600;
+}
+
+.stat-change {
+    font-size: 0.875rem;
+}
+
+.portfolio-chart {
+    height: 300px;
+}
+
+.positions-list,
+.signals-list,
+.market-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.position-item,
+.signal-item,
+.market-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1rem;
+    background-color: var(--card-bg);
+    border-radius: 0.5rem;
+    border: 1px solid var(--border-color);
+}
+
+.position-type,
+.signal-type {
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.position-type.long {
+    background-color: var(--success-color);
+    color: white;
+}
+
+.position-type.short {
+    background-color: var(--danger-color);
+    color: white;
+}
+
+.positive {
+    color: var(--success-color);
+}
+
+.negative {
+    color: var(--danger-color);
+}
+
+.strength-bar {
+    height: 4px;
+    background-color: var(--primary-color);
+    border-radius: 2px;
+}
+
+/* Add more specific styles as needed */
+</style>
+{% endblock %}
+
 {% block scripts %}
-<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-    // Initialize portfolio chart
+// Portfolio Chart
+let portfolioChart;
+
+function initPortfolioChart() {
     const ctx = document.getElementById('portfolioChart').getContext('2d');
-    new Chart(ctx, {
+    portfolioChart = new Chart(ctx, {
         type: 'line',
         data: {
-            labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+            labels: [], // Will be populated with dates
             datasets: [{
                 label: 'Portfolio Value',
-                data: [24500, 24800, 24600, 25100, 25400, 25200, 25750],
-                borderColor: 'rgb(75, 192, 192)',
-                tension: 0.4
+                data: [], // Will be populated with values
+                borderColor: 'rgb(59, 130, 246)',
+                tension: 0.4,
+                fill: true,
+                backgroundColor: 'rgba(59, 130, 246, 0.1)'
             }]
         },
         options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: false
+                }
+            },
             scales: {
                 y: {
-                    beginAtZero: true
+                    beginAtZero: false
                 }
             }
         }
     });
+}
+
+// WebSocket Connection
+let ws;
+
+function initWebSocket() {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
+    
+    ws.onmessage = function(event) {
+        const data = JSON.parse(event.data);
+        handleWebSocketMessage(data);
+    };
+    
+    ws.onclose = function() {
+        // Attempt to reconnect after 5 seconds
+        setTimeout(initWebSocket, 5000);
+    };
+}
+
+function handleWebSocketMessage(data) {
+    switch(data.type) {
+        case 'portfolio_update':
+            updatePortfolioData(data.data);
+            break;
+        case 'price_update':
+            updatePriceData(data.data);
+            break;
+        case 'signal':
+            handleNewSignal(data.data);
+            break;
+        case 'position_update':
+            updatePositionData(data.data);
+            break;
+    }
+}
+
+// Initialize everything when the page loads
+document.addEventListener('DOMContentLoaded', function() {
+    initPortfolioChart();
+    initWebSocket();
+    loadInitialData();
 });
+
+// Load initial data
+async function loadInitialData() {
+    try {
+        const [portfolioData, marketData] = await Promise.all([
+            fetch('/api/portfolio/history').then(r => r.json()),
+            fetch('/api/market/overview').then(r => r.json())
+        ]);
+        
+        updatePortfolioChart(portfolioData);
+        updateMarketData(marketData);
+    } catch (error) {
+        console.error('Error loading initial data:', error);
+    }
+}
+
+// Add other necessary functions...
 </script>
 {% endblock %}
