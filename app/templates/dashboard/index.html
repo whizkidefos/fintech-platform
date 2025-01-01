@@ -20,7 +20,7 @@
                 <div class="portfolio-stats">
                     <div class="stat-item">
                         <span class="stat-label">Total Value</span>
-                        <span class="stat-value">${{ '%0.2f' | format(portfolio.total_value|float) }}</span>
+                        <span class="stat-value" id="accountBalanceSpan">${{ '%0.2f' | format(portfolio.total_value|float) }}</span>
                         <span class="stat-change {{ 'positive' if portfolio.daily_change >= 0 else 'negative' }}">
                             {{ '%0.2f' | format(portfolio.daily_change|float) }}%
                         </span>
@@ -42,54 +42,175 @@
             </div>
         </div>
 
-        <!-- Active Positions -->
-        <div class="card active-positions">
+        <!-- Chart Section -->
+        <div class="card chart-container">
             <div class="card-header">
-                <h2>Active Positions</h2>
-                <button class="btn btn-primary btn-sm" onclick="openNewPositionModal()">
-                    <i class="fas fa-plus"></i> New Position
-                </button>
+                <div class="symbol-selector">
+                    <input type="text" id="symbolInput" placeholder="Enter symbol..." list="symbolsList">
+                    <datalist id="symbolsList">
+                        {% for symbol in available_symbols %}
+                        <option value="{{ symbol }}">
+                        {% endfor %}
+                    </datalist>
+                </div>
+                <div class="chart-controls">
+                    <select id="chartTimeframe" class="select-sm">
+                        <option value="1m">1m</option>
+                        <option value="5m">5m</option>
+                        <option value="15m" selected>15m</option>
+                        <option value="1h">1h</option>
+                        <option value="4h">4h</option>
+                        <option value="1d">1D</option>
+                    </select>
+                    <div class="indicator-buttons">
+                        <button class="btn btn-icon" onclick="toggleIndicatorPanel()">
+                            <i class="fas fa-chart-line"></i>
+                        </button>
+                        <button class="btn btn-icon" onclick="toggleDrawingTools()">
+                            <i class="fas fa-pencil-alt"></i>
+                        </button>
+                    </div>
+                </div>
             </div>
             <div class="card-body">
-                <div class="positions-list">
-                    {% for position in positions %}
-                    <div class="position-item">
-                        <div class="position-info">
-                            <div class="position-asset">
-                                <span class="asset-symbol">{{ position.symbol }}</span>
-                                <span class="position-type {{ position.type }}">{{ position.type }}</span>
-                            </div>
-                            <div class="position-details">
-                                <div class="detail-row">
-                                    <span class="detail-label">Entry</span>
-                                    <span class="detail-value">${{ '%0.2f' | format(position.entry_price|float) }}</span>
-                                </div>
-                                <div class="detail-row">
-                                    <span class="detail-label">Current</span>
-                                    <span class="detail-value">${{ '%0.2f' | format(position.current_price|float) }}</span>
-                                </div>
-                                <div class="detail-row">
-                                    <span class="detail-label">Size</span>
-                                    <span class="detail-value">{{ position.size }}</span>
-                                </div>
-                            </div>
+                <canvas id="mainChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Quick Trade Panel -->
+        <div id="quickTradePanel" class="quick-trade-panel">
+            <div class="panel-header">
+                <h3>Quick Trade</h3>
+                <button class="btn btn-icon" onclick="window.tradingInterface.toggleQuickTradePanel()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="panel-body">
+                <div class="price-info">
+                    <div class="price-row">
+                        <span class="label">Current:</span>
+                        <span id="currentPriceSpan" class="value">--</span>
+                    </div>
+                    <div class="price-row">
+                        <span class="label">Bid:</span>
+                        <span id="bidPriceSpan" class="value">--</span>
+                    </div>
+                    <div class="price-row">
+                        <span class="label">Ask:</span>
+                        <span id="askPriceSpan" class="value">--</span>
+                    </div>
+                </div>
+
+                <div class="trade-form">
+                    <div class="form-group">
+                        <label>Order Type</label>
+                        <select id="orderTypeSelect" class="select-sm">
+                            <option value="MARKET">Market</option>
+                            <option value="LIMIT">Limit</option>
+                            <option value="STOP">Stop</option>
+                            <option value="OCO">OCO</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Side</label>
+                        <select id="tradeSideSelect" class="select-sm">
+                            <option value="BUY">Buy</option>
+                            <option value="SELL">Sell</option>
+                        </select>
+                    </div>
+
+                    <div id="limitPriceContainer" class="form-group" style="display: none;">
+                        <label>Limit Price</label>
+                        <input type="number" id="limitPriceInput" step="0.00000001" class="input-sm">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Position Size</label>
+                        <input type="number" id="positionSizeInput" step="0.00000001" class="input-sm">
+                        <span class="position-value">≈ $<span id="positionValueSpan">0.00</span></span>
+                    </div>
+
+                    <div class="risk-calculator">
+                        <div class="form-group">
+                            <label>Risk %</label>
+                            <input type="number" id="riskPercentInput" step="0.1" value="1" max="100" class="input-sm">
                         </div>
-                        <div class="position-pnl {{ 'positive' if position.pnl >= 0 else 'negative' }}">
-                            <span class="pnl-value">${{ '%0.2f' | format(position.pnl|float) }}</span>
-                            <span class="pnl-percent">{{ '%0.2f' | format(position.pnl_percent|float) }}%</span>
+                        
+                        <div class="form-group">
+                            <label>
+                                <input type="checkbox" id="stopLossEnabled">
+                                Stop Loss
+                            </label>
+                            <input type="number" id="stopLossInput" step="0.00000001" class="input-sm">
                         </div>
-                        <div class="position-actions">
-                            <button class="btn btn-danger btn-sm" onclick="closePosition('{{ position.id }}')">
-                                Close
-                            </button>
+
+                        <div class="form-group">
+                            <label>
+                                <input type="checkbox" id="takeProfitEnabled">
+                                Take Profit
+                            </label>
+                            <input type="number" id="takeProfitInput" step="0.00000001" class="input-sm">
                         </div>
                     </div>
-                    {% endfor %}
+
+                    <button id="submitTradeBtn" class="btn btn-primary btn-block">
+                        Place Order
+                    </button>
                 </div>
             </div>
         </div>
 
-        <!-- Recent Signals -->
+        <!-- Active Positions -->
+        <div class="card active-positions">
+            <div class="card-header">
+                <h2>Active Positions</h2>
+                <div class="card-actions">
+                    <button class="btn btn-outline btn-sm" onclick="refreshPositions()">
+                        <i class="fas fa-sync"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="positions-table">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Symbol</th>
+                                <th>Side</th>
+                                <th>Size</th>
+                                <th>Entry</th>
+                                <th>Current</th>
+                                <th>P/L</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="positionsTableBody">
+                            {% for position in positions %}
+                            <tr>
+                                <td>{{ position.symbol }}</td>
+                                <td class="{{ position.side.lower() }}">{{ position.side }}</td>
+                                <td>{{ position.size }}</td>
+                                <td>${{ '%0.2f' | format(position.entry_price|float) }}</td>
+                                <td>${{ '%0.2f' | format(position.current_price|float) }}</td>
+                                <td class="{{ 'positive' if position.pnl >= 0 else 'negative' }}">
+                                    ${{ '%0.2f' | format(position.pnl|float) }}
+                                    ({{ '%0.2f' | format(position.pnl_percent|float) }}%)
+                                </td>
+                                <td>
+                                    <button class="btn btn-danger btn-sm" onclick="closePosition('{{ position.id }}')">
+                                        Close
+                                    </button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Trading Signals -->
         <div class="card trading-signals">
             <div class="card-header">
                 <h2>Trading Signals</h2>
@@ -100,19 +221,17 @@
                 </div>
             </div>
             <div class="card-body">
-                <div class="signals-list">
+                <div class="signals-list" id="signalsList">
                     {% for signal in signals %}
-                    <div class="signal-item {{ signal.type }}">
+                    <div class="signal-item {{ signal.type.lower() }}">
                         <div class="signal-info">
-                            <span class="signal-asset">{{ signal.symbol }}</span>
-                            <span class="signal-indicator">{{ signal.indicator }}</span>
+                            <span class="signal-symbol">{{ signal.symbol }}</span>
+                            <span class="signal-type">{{ signal.type }}</span>
+                            <span class="signal-time">{{ signal.timestamp | timeago }}</span>
                         </div>
                         <div class="signal-details">
-                            <span class="signal-type">{{ signal.type|upper }}</span>
-                            <span class="signal-time">{{ signal.timestamp|timeago }}</span>
-                        </div>
-                        <div class="signal-strength">
-                            <div class="strength-bar" style="width: {{ signal.strength * 100 }}%"></div>
+                            <span class="signal-price">${{ '%0.2f' | format(signal.price|float) }}</span>
+                            <span class="signal-strength">Strength: {{ signal.strength }}%</span>
                         </div>
                         <div class="signal-actions">
                             <button class="btn btn-primary btn-sm" onclick="executeSignal('{{ signal.id }}')">
@@ -124,263 +243,28 @@
                 </div>
             </div>
         </div>
-
-        <!-- Market Overview -->
-        <div class="card market-overview">
-            <div class="card-header">
-                <h2>Market Overview</h2>
-                <div class="card-actions">
-                    <input type="text" class="input-sm" placeholder="Search assets...">
-                </div>
-            </div>
-            <div class="card-body">
-                <div class="market-list">
-                    {% for asset in market_data %}
-                    <div class="market-item">
-                        <div class="asset-info">
-                            <span class="asset-symbol">{{ asset.symbol }}</span>
-                            <span class="asset-name">{{ asset.name }}</span>
-                        </div>
-                        <div class="asset-price">
-                            <span class="price-value">${{ '%0.2f' | format(asset.price|float) }}</span>
-                            <span class="price-change {{ 'positive' if asset.change >= 0 else 'negative' }}">
-                                {{ '%0.2f' | format(asset.change|float) }}%
-                            </span>
-                        </div>
-                        <div class="asset-volume">
-                            <span class="volume-label">Vol</span>
-                            <span class="volume-value">{{ asset.volume|format_number }}</span>
-                        </div>
-                        <div class="asset-actions">
-                            <button class="btn btn-outline btn-sm" onclick="addToWatchlist('{{ asset.symbol }}')">
-                                <i class="fas fa-star"></i>
-                            </button>
-                            <button class="btn btn-primary btn-sm" onclick="openTradeModal('{{ asset.symbol }}')">
-                                Trade
-                            </button>
-                        </div>
-                    </div>
-                    {% endfor %}
-                </div>
-            </div>
-        </div>
     </div>
 </div>
 
-<!-- New Position Modal -->
-<div id="newPositionModal" class="modal">
-    <div class="modal-content">
-        <div class="modal-header">
-            <h3>New Position</h3>
-            <button class="close-btn" onclick="closeNewPositionModal()">×</button>
-        </div>
-        <div class="modal-body">
-            <form id="newPositionForm">
-                <!-- Form content will be dynamically populated -->
-            </form>
-        </div>
-    </div>
-</div>
-{% endblock %}
-
-{% block styles %}
-<style>
-.dashboard-container {
-    padding: 1.5rem;
-}
-
-.dashboard-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
-    gap: 1.5rem;
-}
-
-.portfolio-summary {
-    grid-column: 1 / -1;
-}
-
-.portfolio-stats {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 1rem;
-    margin-bottom: 1.5rem;
-}
-
-.stat-item {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-}
-
-.stat-label {
-    color: var(--text-secondary);
-    font-size: 0.875rem;
-}
-
-.stat-value {
-    font-size: 1.5rem;
-    font-weight: 600;
-}
-
-.stat-change {
-    font-size: 0.875rem;
-}
-
-.portfolio-chart {
-    height: 300px;
-}
-
-.positions-list,
-.signals-list,
-.market-list {
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-}
-
-.position-item,
-.signal-item,
-.market-item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 1rem;
-    background-color: var(--card-bg);
-    border-radius: 0.5rem;
-    border: 1px solid var(--border-color);
-}
-
-.position-type,
-.signal-type {
-    padding: 0.25rem 0.5rem;
-    border-radius: 0.25rem;
-    font-size: 0.75rem;
-    font-weight: 600;
-    text-transform: uppercase;
-}
-
-.position-type.long {
-    background-color: var(--success-color);
-    color: white;
-}
-
-.position-type.short {
-    background-color: var(--danger-color);
-    color: white;
-}
-
-.positive {
-    color: var(--success-color);
-}
-
-.negative {
-    color: var(--danger-color);
-}
-
-.strength-bar {
-    height: 4px;
-    background-color: var(--primary-color);
-    border-radius: 2px;
-}
-
-/* Add more specific styles as needed */
-</style>
 {% endblock %}
 
 {% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom"></script>
+<script src="{{ url_for('static', filename='js/chart-manager.js') }}"></script>
+<script src="{{ url_for('static', filename='js/trading-interface.js') }}"></script>
 <script>
-// Portfolio Chart
-let portfolioChart;
-
-function initPortfolioChart() {
-    const ctx = document.getElementById('portfolioChart').getContext('2d');
-    portfolioChart = new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels: [], // Will be populated with dates
-            datasets: [{
-                label: 'Portfolio Value',
-                data: [], // Will be populated with values
-                borderColor: 'rgb(59, 130, 246)',
-                tension: 0.4,
-                fill: true,
-                backgroundColor: 'rgba(59, 130, 246, 0.1)'
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: {
-                    display: false
-                }
-            },
-            scales: {
-                y: {
-                    beginAtZero: false
-                }
-            }
-        }
-    });
-}
-
-// WebSocket Connection
-let ws;
-
-function initWebSocket() {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
-    
-    ws.onmessage = function(event) {
-        const data = JSON.parse(event.data);
-        handleWebSocketMessage(data);
-    };
-    
-    ws.onclose = function() {
-        // Attempt to reconnect after 5 seconds
-        setTimeout(initWebSocket, 5000);
-    };
-}
-
-function handleWebSocketMessage(data) {
-    switch(data.type) {
-        case 'portfolio_update':
-            updatePortfolioData(data.data);
-            break;
-        case 'price_update':
-            updatePriceData(data.data);
-            break;
-        case 'signal':
-            handleNewSignal(data.data);
-            break;
-        case 'position_update':
-            updatePositionData(data.data);
-            break;
-    }
-}
-
-// Initialize everything when the page loads
-document.addEventListener('DOMContentLoaded', function() {
-    initPortfolioChart();
-    initWebSocket();
-    loadInitialData();
-});
-
-// Load initial data
-async function loadInitialData() {
-    try {
-        const [portfolioData, marketData] = await Promise.all([
-            fetch('/api/portfolio/history').then(r => r.json()),
-            fetch('/api/market/overview').then(r => r.json())
-        ]);
+    // Initialize everything when the page loads
+    document.addEventListener('DOMContentLoaded', async function() {
+        // Initialize main chart
+        const mainChart = await window.chartManager.initializeChart('mainChart', 'BTC/USD');
         
-        updatePortfolioChart(portfolioData);
-        updateMarketData(marketData);
-    } catch (error) {
-        console.error('Error loading initial data:', error);
-    }
-}
-
-// Add other necessary functions...
+        // Initialize portfolio chart
+        const portfolioChart = await window.chartManager.initializeChart('portfolioChart', 'PORTFOLIO');
+        
+        // Start WebSocket connection
+        initWebSocket();
+    });
 </script>
 {% endblock %}

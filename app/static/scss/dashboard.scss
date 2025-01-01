@@ -1,0 +1,286 @@
+@import 'variables';
+
+.dashboard-container {
+    padding: $spacing-unit * 4;
+    height: 100%;
+    overflow-y: auto;
+}
+
+.dashboard-grid {
+    display: grid;
+    grid-template-columns: repeat(12, 1fr);
+    gap: $grid-gap;
+    
+    .portfolio-summary {
+        grid-column: span 12;
+        
+        @media (min-width: 1200px) {
+            grid-column: span 4;
+        }
+    }
+    
+    .chart-container {
+        grid-column: span 12;
+        
+        @media (min-width: 1200px) {
+            grid-column: span 8;
+        }
+    }
+    
+    .active-positions,
+    .trading-signals {
+        grid-column: span 12;
+        
+        @media (min-width: 1200px) {
+            grid-column: span 6;
+        }
+    }
+}
+
+.card {
+    background: var(--bg-secondary);
+    border-radius: $border-radius;
+    box-shadow: $shadow;
+    overflow: hidden;
+    
+    .card-header {
+        padding: $card-padding;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        
+        h2 {
+            margin: 0;
+            font-size: $font-size-lg;
+            font-weight: $font-weight-medium;
+        }
+        
+        .card-actions {
+            display: flex;
+            gap: $spacing-unit * 2;
+        }
+    }
+    
+    .card-body {
+        padding: $card-padding;
+    }
+}
+
+.portfolio-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: $spacing-unit * 4;
+    margin-bottom: $spacing-unit * 6;
+    
+    .stat-item {
+        display: flex;
+        flex-direction: column;
+        gap: $spacing-unit;
+        
+        .stat-label {
+            color: var(--text-secondary);
+            font-size: $font-size-sm;
+        }
+        
+        .stat-value {
+            font-size: $font-size-lg;
+            font-weight: $font-weight-bold;
+        }
+        
+        .stat-change {
+            font-size: $font-size-sm;
+            font-weight: $font-weight-medium;
+            
+            &.positive {
+                color: $success;
+            }
+            
+            &.negative {
+                color: $danger;
+            }
+        }
+    }
+}
+
+.quick-trade-panel {
+    position: fixed;
+    top: 0;
+    right: -400px;
+    width: 400px;
+    height: 100vh;
+    background: var(--bg-secondary);
+    box-shadow: $shadow-lg;
+    transition: $transition-base;
+    z-index: $z-index-modal;
+    
+    &.show {
+        right: 0;
+    }
+    
+    .panel-header {
+        padding: $card-padding;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        
+        h3 {
+            margin: 0;
+            font-size: $font-size-lg;
+            font-weight: $font-weight-medium;
+        }
+    }
+    
+    .panel-body {
+        padding: $card-padding;
+        height: calc(100% - 70px);
+        overflow-y: auto;
+    }
+    
+    .price-info {
+        margin-bottom: $spacing-unit * 6;
+        
+        .price-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: $spacing-unit * 2;
+            
+            .label {
+                color: var(--text-secondary);
+            }
+            
+            .value {
+                font-weight: $font-weight-medium;
+            }
+        }
+    }
+    
+    .trade-form {
+        .form-group {
+            margin-bottom: $spacing-unit * 4;
+            
+            label {
+                display: block;
+                margin-bottom: $spacing-unit * 2;
+                color: var(--text-secondary);
+            }
+        }
+        
+        .position-value {
+            display: block;
+            margin-top: $spacing-unit;
+            color: var(--text-secondary);
+            font-size: $font-size-sm;
+        }
+    }
+}
+
+.positions-table {
+    width: 100%;
+    overflow-x: auto;
+    
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        
+        th, td {
+            padding: $spacing-unit * 3;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+            white-space: nowrap;
+        }
+        
+        th {
+            color: var(--text-secondary);
+            font-weight: $font-weight-medium;
+            font-size: $font-size-sm;
+        }
+        
+        td {
+            &.buy {
+                color: $success;
+            }
+            
+            &.sell {
+                color: $danger;
+            }
+            
+            .positive {
+                color: $success;
+            }
+            
+            .negative {
+                color: $danger;
+            }
+        }
+    }
+}
+
+.signals-list {
+    display: flex;
+    flex-direction: column;
+    gap: $spacing-unit * 3;
+    
+    .signal-item {
+        padding: $spacing-unit * 4;
+        border-radius: $border-radius;
+        background: var(--bg-primary);
+        border: 1px solid var(--border);
+        
+        &.buy {
+            border-left: 4px solid $success;
+        }
+        
+        &.sell {
+            border-left: 4px solid $danger;
+        }
+        
+        .signal-info {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: $spacing-unit * 2;
+            
+            .signal-symbol {
+                font-weight: $font-weight-medium;
+            }
+            
+            .signal-type {
+                padding: $spacing-unit $spacing-unit * 2;
+                border-radius: $border-radius-sm;
+                font-size: $font-size-sm;
+                font-weight: $font-weight-medium;
+                
+                &.buy {
+                    background: rgba($success, 0.1);
+                    color: $success;
+                }
+                
+                &.sell {
+                    background: rgba($danger, 0.1);
+                    color: $danger;
+                }
+            }
+            
+            .signal-time {
+                color: var(--text-secondary);
+                font-size: $font-size-sm;
+            }
+        }
+        
+        .signal-details {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: $spacing-unit * 3;
+            
+            .signal-price {
+                font-weight: $font-weight-medium;
+            }
+            
+            .signal-strength {
+                color: var(--text-secondary);
+                font-size: $font-size-sm;
+            }
+        }
+    }
+}

@@ -1,0 +1,309 @@
+@import 'variables';
+
+// Buttons
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: $spacing-unit * 3 $spacing-unit * 4;
+    border-radius: $border-radius;
+    font-size: $font-size-base;
+    font-weight: $font-weight-medium;
+    line-height: 1;
+    text-align: center;
+    cursor: pointer;
+    transition: $transition-base;
+    border: none;
+    outline: none;
+    
+    &:hover {
+        transform: translateY(-1px);
+    }
+    
+    &:active {
+        transform: translateY(0);
+    }
+    
+    &.btn-sm {
+        padding: $spacing-unit * 2 $spacing-unit * 3;
+        font-size: $font-size-sm;
+    }
+    
+    &.btn-lg {
+        padding: $spacing-unit * 4 $spacing-unit * 6;
+        font-size: $font-size-lg;
+    }
+    
+    &.btn-block {
+        width: 100%;
+    }
+    
+    &.btn-icon {
+        padding: $spacing-unit * 2;
+        border-radius: 50%;
+    }
+}
+
+.btn-primary {
+    background: $primary;
+    color: #ffffff;
+    
+    &:hover {
+        background: darken($primary, 5%);
+    }
+}
+
+.btn-secondary {
+    background: $secondary;
+    color: #ffffff;
+    
+    &:hover {
+        background: darken($secondary, 5%);
+    }
+}
+
+.btn-success {
+    background: $success;
+    color: #ffffff;
+    
+    &:hover {
+        background: darken($success, 5%);
+    }
+}
+
+.btn-danger {
+    background: $danger;
+    color: #ffffff;
+    
+    &:hover {
+        background: darken($danger, 5%);
+    }
+}
+
+.btn-outline {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+    
+    &:hover {
+        background: var(--bg-primary);
+    }
+}
+
+// Form Controls
+.form-group {
+    margin-bottom: $spacing-unit * 4;
+    
+    label {
+        display: block;
+        margin-bottom: $spacing-unit * 2;
+        color: var(--text-secondary);
+        font-size: $font-size-sm;
+    }
+}
+
+.input-sm {
+    padding: $spacing-unit * 2 $spacing-unit * 3;
+    font-size: $font-size-sm;
+}
+
+input[type="text"],
+input[type="number"],
+input[type="password"],
+select,
+textarea {
+    width: 100%;
+    padding: $spacing-unit * 3 $spacing-unit * 4;
+    border: 1px solid var(--border);
+    border-radius: $border-radius;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-size: $font-size-base;
+    line-height: 1.5;
+    transition: $transition-base;
+    
+    &:focus {
+        outline: none;
+        border-color: $primary;
+        box-shadow: 0 0 0 2px rgba($primary, 0.2);
+    }
+    
+    &:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+}
+
+select {
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='none' viewBox='0 0 12 12'%3E%3Cpath stroke='currentColor' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M3 5l3 3 3-3'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right $spacing-unit * 4 center;
+    padding-right: $spacing-unit * 10;
+}
+
+// Alerts
+.alert {
+    padding: $spacing-unit * 4;
+    border-radius: $border-radius;
+    margin-bottom: $spacing-unit * 4;
+    
+    &.alert-success {
+        background: rgba($success, 0.1);
+        color: $success;
+    }
+    
+    &.alert-danger {
+        background: rgba($danger, 0.1);
+        color: $danger;
+    }
+    
+    &.alert-warning {
+        background: rgba($warning, 0.1);
+        color: $warning;
+    }
+    
+    &.alert-info {
+        background: rgba($info, 0.1);
+        color: $info;
+    }
+}
+
+// Loading Spinner
+.spinner {
+    width: 24px;
+    height: 24px;
+    border: 2px solid var(--border);
+    border-top-color: $primary;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+// Tooltips
+.tooltip {
+    position: relative;
+    display: inline-block;
+    
+    .tooltip-content {
+        position: absolute;
+        bottom: 100%;
+        left: 50%;
+        transform: translateX(-50%);
+        padding: $spacing-unit * 2 $spacing-unit * 3;
+        background: var(--bg-secondary);
+        color: var(--text-primary);
+        font-size: $font-size-sm;
+        border-radius: $border-radius-sm;
+        box-shadow: $shadow;
+        white-space: nowrap;
+        visibility: hidden;
+        opacity: 0;
+        transition: $transition-base;
+        z-index: $z-index-tooltip;
+        
+        &::after {
+            content: '';
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            border: 6px solid transparent;
+            border-top-color: var(--bg-secondary);
+        }
+    }
+    
+    &:hover .tooltip-content {
+        visibility: visible;
+        opacity: 1;
+    }
+}
+
+// Badges
+.badge {
+    display: inline-block;
+    padding: $spacing-unit $spacing-unit * 2;
+    border-radius: $border-radius-sm;
+    font-size: $font-size-sm;
+    font-weight: $font-weight-medium;
+    line-height: 1;
+    
+    &.badge-primary {
+        background: rgba($primary, 0.1);
+        color: $primary;
+    }
+    
+    &.badge-success {
+        background: rgba($success, 0.1);
+        color: $success;
+    }
+    
+    &.badge-danger {
+        background: rgba($danger, 0.1);
+        color: $danger;
+    }
+    
+    &.badge-warning {
+        background: rgba($warning, 0.1);
+        color: $warning;
+    }
+}
+
+// Modal
+.modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba($bg-dark, 0.5);
+    display: none;
+    justify-content: center;
+    align-items: center;
+    z-index: $z-index-modal;
+    
+    &.show {
+        display: flex;
+    }
+    
+    .modal-content {
+        background: var(--bg-secondary);
+        border-radius: $border-radius;
+        box-shadow: $shadow-lg;
+        width: 100%;
+        max-width: 500px;
+        max-height: 90vh;
+        overflow-y: auto;
+        
+        .modal-header {
+            padding: $card-padding;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            
+            h3 {
+                margin: 0;
+                font-size: $font-size-lg;
+                font-weight: $font-weight-medium;
+            }
+        }
+        
+        .modal-body {
+            padding: $card-padding;
+        }
+        
+        .modal-footer {
+            padding: $card-padding;
+            border-top: 1px solid var(--border);
+            display: flex;
+            justify-content: flex-end;
+            gap: $spacing-unit * 3;
+        }
+    }
+}

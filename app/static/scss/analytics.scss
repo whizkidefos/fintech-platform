@@ -1,0 +1,195 @@
+@import 'variables';
+
+.analytics-dashboard {
+    padding: $spacing-unit * 4;
+    height: 100%;
+    overflow-y: auto;
+}
+
+.analytics-grid {
+    display: grid;
+    grid-template-columns: repeat(12, 1fr);
+    gap: $grid-gap;
+    
+    .performance-metrics {
+        grid-column: span 12;
+        
+        @media (min-width: 1200px) {
+            grid-column: span 8;
+        }
+        
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: $spacing-unit * 3;
+            margin-bottom: $spacing-unit * 4;
+        }
+    }
+    
+    .risk-analysis {
+        grid-column: span 12;
+        
+        @media (min-width: 1200px) {
+            grid-column: span 4;
+        }
+    }
+    
+    .trade-analysis {
+        grid-column: span 12;
+    }
+    
+    .position-calculator {
+        grid-column: span 12;
+        
+        @media (min-width: 1200px) {
+            grid-column: span 4;
+        }
+    }
+}
+
+.metric-item {
+    background: var(--bg-primary);
+    padding: $spacing-unit * 4;
+    border-radius: $border-radius;
+    border: 1px solid var(--border);
+    
+    .metric-label {
+        display: block;
+        color: var(--text-secondary);
+        font-size: $font-size-sm;
+        margin-bottom: $spacing-unit;
+    }
+    
+    .metric-value {
+        display: block;
+        font-size: $font-size-lg;
+        font-weight: $font-weight-bold;
+        
+        &.positive {
+            color: $success;
+        }
+        
+        &.negative {
+            color: $danger;
+        }
+    }
+}
+
+.chart-container {
+    position: relative;
+    height: 300px;
+    margin: $spacing-unit * 4 0;
+}
+
+.analysis-tabs {
+    display: flex;
+    gap: $spacing-unit * 2;
+    margin-bottom: $spacing-unit * 4;
+    border-bottom: 1px solid var(--border);
+    
+    .tab-btn {
+        padding: $spacing-unit * 3 $spacing-unit * 4;
+        background: none;
+        border: none;
+        border-bottom: 2px solid transparent;
+        color: var(--text-secondary);
+        cursor: pointer;
+        transition: $transition-base;
+        
+        &:hover {
+            color: var(--text-primary);
+        }
+        
+        &.active {
+            color: $primary;
+            border-bottom-color: $primary;
+        }
+    }
+}
+
+.tab-content {
+    .tab-pane {
+        display: none;
+        
+        &.active {
+            display: block;
+        }
+    }
+}
+
+.calculator-form {
+    .form-group {
+        margin-bottom: $spacing-unit * 4;
+    }
+    
+    .calculator-result {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: $spacing-unit * 3;
+        background: var(--bg-primary);
+        border-radius: $border-radius;
+        margin-bottom: $spacing-unit * 2;
+        
+        .result-label {
+            color: var(--text-secondary);
+            font-size: $font-size-sm;
+        }
+        
+        .result-value {
+            font-weight: $font-weight-bold;
+        }
+    }
+}
+
+// Risk Analysis Styles
+.risk-metrics {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: $spacing-unit * 3;
+    margin-bottom: $spacing-unit * 4;
+}
+
+// Performance Chart Styles
+.performance-chart {
+    background: var(--bg-primary);
+    border-radius: $border-radius;
+    padding: $spacing-unit * 3;
+    margin-bottom: $spacing-unit * 4;
+    
+    .chart-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: $spacing-unit * 3;
+        
+        h3 {
+            margin: 0;
+            font-size: $font-size-base;
+            font-weight: $font-weight-medium;
+        }
+    }
+}
+
+// Export Button Styles
+.export-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: $spacing-unit * 2;
+    padding: $spacing-unit * 2 $spacing-unit * 3;
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: $border-radius;
+    color: var(--text-primary);
+    font-size: $font-size-sm;
+    cursor: pointer;
+    transition: $transition-base;
+    
+    &:hover {
+        background: var(--bg-secondary);
+    }
+    
+    i {
+        font-size: $font-size-base;
+    }
+}

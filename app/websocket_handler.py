@@ -1,17 +1,37 @@
 from flask_sock import Sock
 import json
 from datetime import datetime
-from typing import Dict, Set
+from typing import Dict, Set, Optional
 import asyncio
+import threading
+from queue import Queue
 from app.utils.market_data import MarketDataFetcher
-from app.models import Portfolio, Position, TradingSignal
+from app.models.portfolio import Portfolio
+from app.models.position import Position
+from decimal import Decimal
 
 class WebSocketManager:
     def __init__(self):
         self.clients: Dict[int, Set] = {}  # user_id -> set of websocket connections
+        self.subscriptions: Dict[str, Set] = {}  # symbol -> set of user_ids
         self.market_data = MarketDataFetcher()
+        self.message_queue = Queue()
         self.running = False
-        self.update_tasks = set()
+        self.update_thread = None
+
+    def start(self):
+        """Start the WebSocket manager"""
+        if not self.running:
+            self.running = True
+            self.update_thread = threading.Thread(target=self._process_queue)
+            self.update_thread.daemon = True
+            self.update_thread.start()
+
+    def stop(self):
+        """Stop the WebSocket manager"""
+        self.running = False
+        if self.update_thread:
+            self.update_thread.join()
 
     def register_client(self, user_id: int, ws):
         """Register a new websocket connection for a user"""
@@ -19,8 +39,8 @@ class WebSocketManager:
             self.clients[user_id] = set()
         self.clients[user_id].add(ws)
 
-        if not self.running:
-            self.start_updates()
+        if len(self.clients) == 1:
+            self.start()
 
     def unregister_client(self, user_id: int, ws):
         """Unregister a websocket connection"""
@@ -28,12 +48,73 @@ class WebSocketManager:
             self.clients[user_id].discard(ws)
             if not self.clients[user_id]:
                 del self.clients[user_id]
+                # Remove user's subscriptions
+                for symbol in list(self.subscriptions.keys()):
+                    if user_id in self.subscriptions[symbol]:
+                        self.subscriptions[symbol].discard(user_id)
+                        if not self.subscriptions[symbol]:
+                            del self.subscriptions[symbol]
 
         if not self.clients:
-            self.stop_updates()
+            self.stop()
 
-    async def send_to_user(self, user_id: int, message: dict):
-        """Send message to all connections of a specific user"""
+    def subscribe(self, user_id: int, symbol: str):
+        """Subscribe a user to updates for a symbol"""
+        if symbol not in self.subscriptions:
+            self.subscriptions[symbol] = set()
+        self.subscriptions[symbol].add(user_id)
+
+    def unsubscribe(self, user_id: int, symbol: str):
+        """Unsubscribe a user from updates for a symbol"""
+        if symbol in self.subscriptions:
+            self.subscriptions[symbol].discard(user_id)
+            if not self.subscriptions[symbol]:
+                del self.subscriptions[symbol]
+
+    async def broadcast_market_data(self, symbol: str, data: dict):
+        """Broadcast market data to all subscribed users"""
+        if symbol in self.subscriptions:
+            message = {
+                'type': 'market_data',
+                'symbol': symbol,
+                'data': data
+            }
+            for user_id in self.subscriptions[symbol]:
+                await self._send_to_user(user_id, message)
+
+    async def broadcast_portfolio_update(self, user_id: int, portfolio: Portfolio):
+        """Broadcast portfolio updates to a specific user"""
+        message = {
+            'type': 'portfolio_update',
+            'data': {
+                'total_value': float(portfolio.total_value),
+                'cash_balance': float(portfolio.cash_balance),
+                'daily_pnl': float(portfolio.daily_pnl),
+                'daily_change': float(portfolio.daily_change)
+            }
+        }
+        await self._send_to_user(user_id, message)
+
+    async def broadcast_position_update(self, position: Position):
+        """Broadcast position updates to the position owner"""
+        current_price = self.market_data.get_ticker(position.symbol)['last']
+        message = {
+            'type': 'position_update',
+            'data': {
+                'id': position.id,
+                'symbol': position.symbol,
+                'side': position.side,
+                'size': float(position.size),
+                'entry_price': float(position.entry_price),
+                'current_price': float(current_price),
+                'pnl': float(position.calculate_pnl(Decimal(str(current_price)))),
+                'pnl_percent': float(position.calculate_pnl_percent(Decimal(str(current_price))))
+            }
+        }
+        await self._send_to_user(position.portfolio.user_id, message)
+
+    async def _send_to_user(self, user_id: int, message: dict):
+        """Send a message to all connections of a specific user"""
         if user_id in self.clients:
             dead_connections = set()
             for ws in self.clients[user_id]:
@@ -46,148 +127,25 @@ class WebSocketManager:
             for ws in dead_connections:
                 self.clients[user_id].discard(ws)
 
-    def start_updates(self):
-        """Start background update tasks"""
-        self.running = True
-        asyncio.create_task(self._portfolio_updates())
-        asyncio.create_task(self._market_updates())
-        asyncio.create_task(self._signal_updates())
-
-    def stop_updates(self):
-        """Stop all background update tasks"""
-        self.running = False
-        for task in self.update_tasks:
-            task.cancel()
-        self.update_tasks.clear()
-
-    async def _portfolio_updates(self):
-        """Send portfolio updates to users"""
+    def _process_queue(self):
+        """Process messages in the queue"""
         while self.running:
             try:
-                for user_id in self.clients:
-                    portfolio = Portfolio.query.filter_by(user_id=user_id).first()
-                    if portfolio:
-                        # Update portfolio values
-                        portfolio.update_portfolio_value()
-                        
-                        # Send update to user
-                        await self.send_to_user(user_id, {
-                            'type': 'portfolio_update',
-                            'data': {
-                                'total_value': float(portfolio.equity_value + portfolio.cash_balance),
-                                'equity_value': float(portfolio.equity_value),
-                                'cash_balance': float(portfolio.cash_balance),
-                                'unrealized_pnl': float(portfolio.unrealized_pnl),
-                                'realized_pnl': float(portfolio.realized_pnl),
-                                'timestamp': datetime.utcnow().isoformat()
-                            }
-                        })
+                message = self.message_queue.get(timeout=1)
+                asyncio.run(self._process_message(message))
+            except Exception:
+                continue
 
-                await asyncio.sleep(5)  # Update every 5 seconds
-            except Exception as e:
-                print(f"Error in portfolio updates: {e}")
-                await asyncio.sleep(5)
-
-    async def _market_updates(self):
-        """Send market data updates to users"""
-        while self.running:
-            try:
-                for user_id in self.clients:
-                    # Get watched assets for user
-                    portfolio = Portfolio.query.filter_by(user_id=user_id).first()
-                    if portfolio:
-                        positions = Position.query.filter_by(
-                            portfolio_id=portfolio.id,
-                            status='open'
-                        ).all()
-
-                        for position in positions:
-                            ticker = self.market_data.fetch_ticker(position.asset.symbol)
-                            
-                            await self.send_to_user(user_id, {
-                                'type': 'price_update',
-                                'data': {
-                                    'symbol': position.asset.symbol,
-                                    'price': ticker['last'],
-                                    'change': ticker['percentage'],
-                                    'volume': ticker['baseVolume'],
-                                    'high': ticker['high'],
-                                    'low': ticker['low'],
-                                    'timestamp': datetime.utcnow().isoformat()
-                                }
-                            })
-
-                await asyncio.sleep(1)  # Update every second
-            except Exception as e:
-                print(f"Error in market updates: {e}")
-                await asyncio.sleep(5)
-
-    async def _signal_updates(self):
-        """Send trading signal updates to users"""
-        while self.running:
-            try:
-                for user_id in self.clients:
-                    # Get recent signals
-                    signals = TradingSignal.query.filter(
-                        TradingSignal.created_at > datetime.utcnow()
-                    ).all()
-
-                    for signal in signals:
-                        await self.send_to_user(user_id, {
-                            'type': 'signal',
-                            'data': {
-                                'id': signal.id,
-                                'asset': signal.asset.symbol,
-                                'type': signal.signal_type,
-                                'strength': signal.strength,
-                                'indicators': signal.indicator_values,
-                                'timestamp': signal.created_at.isoformat()
-                            }
-                        })
-
-                await asyncio.sleep(60)  # Check for new signals every minute
-            except Exception as e:
-                print(f"Error in signal updates: {e}")
-                await asyncio.sleep(5)
-
-    async def handle_client_message(self, user_id: int, message: dict):
-        """Handle incoming messages from clients"""
-        try:
-            message_type = message.get('type')
-            data = message.get('data', {})
-
-            if message_type == 'subscribe':
-                # Handle subscription requests
-                await self._handle_subscription(user_id, data)
-            elif message_type == 'unsubscribe':
-                # Handle unsubscription requests
-                await self._handle_unsubscription(user_id, data)
-            elif message_type == 'ping':
-                # Handle ping messages
-                await self.send_to_user(user_id, {'type': 'pong'})
-
-        except Exception as e:
-            print(f"Error handling client message: {e}")
-            await self.send_to_user(user_id, {
-                'type': 'error',
-                'data': {'message': str(e)}
-            })
-
-    async def _handle_subscription(self, user_id: int, data: dict):
-        """Handle client subscription requests"""
-        channels = data.get('channels', [])
-        symbols = data.get('symbols', [])
-
-        # Store subscription preferences and send initial data
-        pass
-
-    async def _handle_unsubscription(self, user_id: int, data: dict):
-        """Handle client unsubscription requests"""
-        channels = data.get('channels', [])
-        symbols = data.get('symbols', [])
-
-        # Remove subscription preferences
-        pass
+    async def _process_message(self, message: dict):
+        """Process a single message"""
+        message_type = message.get('type')
+        
+        if message_type == 'market_data':
+            await self.broadcast_market_data(message['symbol'], message['data'])
+        elif message_type == 'portfolio_update':
+            await self.broadcast_portfolio_update(message['user_id'], message['portfolio'])
+        elif message_type == 'position_update':
+            await self.broadcast_position_update(message['position'])
 
 # Initialize WebSocket manager
 ws_manager = WebSocketManager()
@@ -195,30 +153,27 @@ ws_manager = WebSocketManager()
 def init_websocket(app):
     """Initialize WebSocket functionality"""
     sock = Sock(app)
-    
-    @sock.route('/ws')
-    def ws_handler(ws):
-        """Handle WebSocket connections"""
-        if not getattr(ws, 'user_id', None):
+
+    @sock.route('/ws/market')
+    def market_socket(ws):
+        """Handle market data WebSocket connections"""
+        if not hasattr(ws, 'user_id'):
             ws.close()
             return
-            
+
+        ws_manager.register_client(ws.user_id, ws)
+        
         try:
-            # Register client
-            ws_manager.register_client(ws.user_id, ws)
-            
             while True:
-                # Receive and handle messages
-                message = ws.receive()
-                if message:
-                    data = json.loads(message)
-                    asyncio.create_task(
-                        ws_manager.handle_client_message(ws.user_id, data)
-                    )
-                    
-        except Exception as e:
-            print(f"WebSocket error: {e}")
+                data = json.loads(ws.receive())
+                action = data.get('action')
+                symbol = data.get('symbol')
+
+                if action == 'subscribe' and symbol:
+                    ws_manager.subscribe(ws.user_id, symbol)
+                elif action == 'unsubscribe' and symbol:
+                    ws_manager.unsubscribe(ws.user_id, symbol)
+        except Exception:
+            pass
         finally:
             ws_manager.unregister_client(ws.user_id, ws)
-    
-    return sock

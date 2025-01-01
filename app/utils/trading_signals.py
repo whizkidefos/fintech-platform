@@ -1,109 +1,286 @@
 import numpy as np
 import pandas as pd
-from datetime import datetime
+from typing import Dict, List, Optional, Tuple
+from dataclasses import dataclass
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.preprocessing import StandardScaler
+from app.utils.indicators import TechnicalIndicators
 
-class TechnicalIndicators:
-    @staticmethod
-    def calculate_sma(data, period):
-        return data.rolling(window=period).mean()
-    
-    @staticmethod
-    def calculate_ema(data, period):
-        return data.ewm(span=period, adjust=False).mean()
-    
-    @staticmethod
-    def calculate_rsi(data, period=14):
-        delta = data.diff()
-        gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
-        loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
-        rs = gain / loss
-        return 100 - (100 / (1 + rs))
-    
-    @staticmethod
-    def calculate_macd(data, fast_period=12, slow_period=26, signal_period=9):
-        fast_ema = TechnicalIndicators.calculate_ema(data, fast_period)
-        slow_ema = TechnicalIndicators.calculate_ema(data, slow_period)
-        macd_line = fast_ema - slow_ema
-        signal_line = TechnicalIndicators.calculate_ema(macd_line, signal_period)
-        return macd_line, signal_line
+@dataclass
+class Signal:
+    asset: str
+    direction: str  # 'long' or 'short'
+    confidence: float
+    entry_price: float
+    stop_loss: float
+    take_profit: float
+    timeframe: str
+    strategy: str
+    indicators: Dict
+    metadata: Dict
 
-class SignalGenerator:
-    def __init__(self, asset_data):
-        self.data = pd.DataFrame(asset_data)
-        self.indicators = TechnicalIndicators()
-        
-    def generate_signals(self):
+class TradingSignalGenerator:
+    def __init__(self, technical_indicators: TechnicalIndicators):
+        self.indicators = technical_indicators
+        self.scaler = StandardScaler()
+        self.ml_model = RandomForestClassifier(n_estimators=100, random_state=42)
+        self.regime_threshold = 0.5
+
+    def generate_signals(self, market_data: Dict, regime_probabilities: Optional[np.ndarray] = None) -> List[Signal]:
+        """Generate trading signals using multiple strategies"""
         signals = []
         
-        # Calculate indicators
-        self.data['SMA_20'] = self.indicators.calculate_sma(self.data['close'], 20)
-        self.data['SMA_50'] = self.indicators.calculate_sma(self.data['close'], 50)
-        self.data['RSI'] = self.indicators.calculate_rsi(self.data['close'])
-        macd_line, signal_line = self.indicators.calculate_macd(self.data['close'])
-        self.data['MACD'] = macd_line
-        self.data['Signal_Line'] = signal_line
+        # Technical Analysis Signals
+        tech_signals = self._generate_technical_signals(market_data)
+        signals.extend(tech_signals)
         
-        # Generate signals based on multiple indicators
-        for i in range(1, len(self.data)):
-            signal = self._check_signal_conditions(i)
-            if signal:
-                signals.append(signal)
+        # Statistical Arbitrage Signals
+        stat_arb_signals = self._generate_stat_arb_signals(market_data)
+        signals.extend(stat_arb_signals)
+        
+        # Machine Learning Signals
+        ml_signals = self._generate_ml_signals(market_data)
+        signals.extend(ml_signals)
+        
+        # Regime-based Signals
+        if regime_probabilities is not None:
+            regime_signals = self._generate_regime_signals(market_data, regime_probabilities)
+            signals.extend(regime_signals)
+        
+        # Filter and rank signals
+        ranked_signals = self._rank_signals(signals)
+        
+        return ranked_signals
+
+    def _generate_technical_signals(self, market_data: Dict) -> List[Signal]:
+        """Generate signals based on technical analysis"""
+        signals = []
+        
+        for asset, data in market_data.items():
+            # Calculate technical indicators
+            indicators = self.indicators.calculate_all(data)
+            
+            # Trend following signals
+            if (indicators['macd']['histogram'][-1] > 0 and
+                indicators['adx'][-1] > 25):
+                signals.append(Signal(
+                    asset=asset,
+                    direction='long',
+                    confidence=0.7,
+                    entry_price=data['close'][-1],
+                    stop_loss=data['low'][-1] * 0.99,
+                    take_profit=data['close'][-1] * 1.03,
+                    timeframe='1h',
+                    strategy='trend_following',
+                    indicators=indicators,
+                    metadata={'trend_strength': indicators['adx'][-1]}
+                ))
+            
+            # Mean reversion signals
+            if (indicators['rsi'][-1] < 30 and
+                indicators['bbands']['lower'][-1] > data['close'][-1]):
+                signals.append(Signal(
+                    asset=asset,
+                    direction='long',
+                    confidence=0.6,
+                    entry_price=data['close'][-1],
+                    stop_loss=data['low'][-1] * 0.98,
+                    take_profit=indicators['bbands']['middle'][-1],
+                    timeframe='1h',
+                    strategy='mean_reversion',
+                    indicators=indicators,
+                    metadata={'oversold_strength': 30 - indicators['rsi'][-1]}
+                ))
         
         return signals
-    
-    def _check_signal_conditions(self, index):
-        current = self.data.iloc[index]
-        prev = self.data.iloc[index - 1]
+
+    def _generate_stat_arb_signals(self, market_data: Dict) -> List[Signal]:
+        """Generate statistical arbitrage signals"""
+        signals = []
         
-        signal = {
-            'timestamp': current.name,
-            'price': current['close'],
-            'indicators': {},
-            'strength': 0,
-            'type': None
-        }
+        # Calculate correlation matrix
+        returns = pd.DataFrame({asset: data['close'].pct_change()
+                              for asset, data in market_data.items()})
+        correlation = returns.corr()
         
-        # Check SMA crossover
-        sma_crossover = (prev['SMA_20'] <= prev['SMA_50'] and 
-                        current['SMA_20'] > current['SMA_50'])
-        sma_crossunder = (prev['SMA_20'] >= prev['SMA_50'] and 
-                         current['SMA_20'] < current['SMA_50'])
+        # Find highly correlated pairs
+        for i in range(len(correlation)):
+            for j in range(i + 1, len(correlation)):
+                if correlation.iloc[i, j] > 0.8:
+                    asset1 = correlation.index[i]
+                    asset2 = correlation.index[j]
+                    
+                    # Calculate z-score of spread
+                    spread = (market_data[asset1]['close'] /
+                            market_data[asset2]['close'])
+                    z_score = (spread - spread.mean()) / spread.std()
+                    
+                    if z_score[-1] > 2:
+                        signals.extend([
+                            Signal(
+                                asset=asset1,
+                                direction='short',
+                                confidence=0.65,
+                                entry_price=market_data[asset1]['close'][-1],
+                                stop_loss=market_data[asset1]['close'][-1] * 1.02,
+                                take_profit=market_data[asset1]['close'][-1] * 0.98,
+                                timeframe='1h',
+                                strategy='stat_arb',
+                                indicators={},
+                                metadata={'pair': asset2, 'z_score': float(z_score[-1])}
+                            ),
+                            Signal(
+                                asset=asset2,
+                                direction='long',
+                                confidence=0.65,
+                                entry_price=market_data[asset2]['close'][-1],
+                                stop_loss=market_data[asset2]['close'][-1] * 0.98,
+                                take_profit=market_data[asset2]['close'][-1] * 1.02,
+                                timeframe='1h',
+                                strategy='stat_arb',
+                                indicators={},
+                                metadata={'pair': asset1, 'z_score': float(z_score[-1])}
+                            )
+                        ])
         
-        # Check MACD crossover
-        macd_crossover = (prev['MACD'] <= prev['Signal_Line'] and 
-                         current['MACD'] > current['Signal_Line'])
-        macd_crossunder = (prev['MACD'] >= prev['Signal_Line'] and 
-                         current['MACD'] < current['Signal_Line'])
+        return signals
+
+    def _generate_ml_signals(self, market_data: Dict) -> List[Signal]:
+        """Generate machine learning based signals"""
+        signals = []
         
-        # Check RSI conditions
-        rsi_oversold = current['RSI'] < 30
-        rsi_overbought = current['RSI'] > 70
+        for asset, data in market_data.items():
+            # Prepare features
+            features = self._prepare_ml_features(data)
+            
+            # Make prediction
+            if len(features) > 0:
+                prediction = self.ml_model.predict_proba(features)[-1]
+                confidence = max(prediction)
+                
+                if confidence > 0.7:
+                    direction = 'long' if prediction[1] > prediction[0] else 'short'
+                    signals.append(Signal(
+                        asset=asset,
+                        direction=direction,
+                        confidence=confidence,
+                        entry_price=data['close'][-1],
+                        stop_loss=data['low'][-1] * 0.99,
+                        take_profit=data['close'][-1] * 1.03,
+                        timeframe='1h',
+                        strategy='ml_prediction',
+                        indicators={},
+                        metadata={'model_confidence': float(confidence)}
+                    ))
         
-        # Combine signals
-        buy_signals = [sma_crossover, macd_crossover, rsi_oversold]
-        sell_signals = [sma_crossunder, macd_crossunder, rsi_overbought]
+        return signals
+
+    def _generate_regime_signals(self, market_data: Dict,
+                               regime_probabilities: np.ndarray) -> List[Signal]:
+        """Generate regime-dependent signals"""
+        signals = []
+        current_regime = np.argmax(regime_probabilities[-1])
         
-        buy_strength = sum(buy_signals) / len(buy_signals)
-        sell_strength = sum(sell_signals) / len(sell_signals)
+        for asset, data in market_data.items():
+            indicators = self.indicators.calculate_all(data)
+            
+            # High volatility regime
+            if current_regime == 0:
+                if indicators['atr'][-1] > indicators['atr'][-20:].mean():
+                    signals.append(Signal(
+                        asset=asset,
+                        direction='long',
+                        confidence=0.6,
+                        entry_price=data['close'][-1],
+                        stop_loss=data['close'][-1] - 2 * indicators['atr'][-1],
+                        take_profit=data['close'][-1] + 3 * indicators['atr'][-1],
+                        timeframe='1h',
+                        strategy='regime_volatility',
+                        indicators=indicators,
+                        metadata={'regime': 'high_volatility'}
+                    ))
+            
+            # Trend regime
+            elif current_regime == 1:
+                if all(indicators['sma'][-3:] > indicators['sma'][-4:-1]):
+                    signals.append(Signal(
+                        asset=asset,
+                        direction='long',
+                        confidence=0.7,
+                        entry_price=data['close'][-1],
+                        stop_loss=indicators['sma'][-1],
+                        take_profit=data['close'][-1] * 1.05,
+                        timeframe='1h',
+                        strategy='regime_trend',
+                        indicators=indicators,
+                        metadata={'regime': 'trend'}
+                    ))
+            
+            # Mean reversion regime
+            else:
+                if indicators['rsi'][-1] < 30:
+                    signals.append(Signal(
+                        asset=asset,
+                        direction='long',
+                        confidence=0.65,
+                        entry_price=data['close'][-1],
+                        stop_loss=data['low'][-1] * 0.98,
+                        take_profit=indicators['bbands']['middle'][-1],
+                        timeframe='1h',
+                        strategy='regime_mean_reversion',
+                        indicators=indicators,
+                        metadata={'regime': 'mean_reversion'}
+                    ))
         
-        # Generate signal if strength threshold is met
-        if buy_strength > 0.5:
-            signal['type'] = 'buy'
-            signal['strength'] = buy_strength
-            signal['indicators'] = {
-                'sma_crossover': sma_crossover,
-                'macd_crossover': macd_crossover,
-                'rsi_oversold': rsi_oversold
+        return signals
+
+    def _prepare_ml_features(self, data: pd.DataFrame) -> np.ndarray:
+        """Prepare features for machine learning model"""
+        # Calculate technical indicators
+        indicators = self.indicators.calculate_all(data)
+        
+        features = pd.DataFrame({
+            'rsi': indicators['rsi'],
+            'macd': indicators['macd']['histogram'],
+            'bb_position': (data['close'] - indicators['bbands']['middle']) /
+                         (indicators['bbands']['upper'] - indicators['bbands']['middle']),
+            'atr': indicators['atr'],
+            'volume_sma_ratio': data['volume'] / data['volume'].rolling(20).mean(),
+            'returns': data['close'].pct_change()
+        }).dropna()
+        
+        return self.scaler.fit_transform(features)
+
+    def _rank_signals(self, signals: List[Signal]) -> List[Signal]:
+        """Rank and filter signals based on multiple criteria"""
+        if not signals:
+            return []
+        
+        # Calculate composite score for each signal
+        scored_signals = []
+        for signal in signals:
+            score = signal.confidence
+            
+            # Adjust score based on strategy performance
+            strategy_multiplier = {
+                'trend_following': 1.2,
+                'mean_reversion': 1.0,
+                'stat_arb': 1.1,
+                'ml_prediction': 1.0,
+                'regime_volatility': 1.1,
+                'regime_trend': 1.2,
+                'regime_mean_reversion': 1.0
             }
-            return signal
-        elif sell_strength > 0.5:
-            signal['type'] = 'sell'
-            signal['strength'] = sell_strength
-            signal['indicators'] = {
-                'sma_crossunder': sma_crossunder,
-                'macd_crossunder': macd_crossunder,
-                'rsi_overbought': rsi_overbought
-            }
-            return signal
+            score *= strategy_multiplier.get(signal.strategy, 1.0)
+            
+            # Adjust score based on risk/reward
+            risk = abs(signal.entry_price - signal.stop_loss)
+            reward = abs(signal.take_profit - signal.entry_price)
+            risk_reward_ratio = reward / risk if risk != 0 else 0
+            score *= min(risk_reward_ratio, 3) / 3
+            
+            scored_signals.append((score, signal))
         
-        return None
+        # Sort by score and return top signals
+        scored_signals.sort(key=lambda x: x[0], reverse=True)
+        return [signal for _, signal in scored_signals[:10]]

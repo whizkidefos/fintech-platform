@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="analytics-dashboard">
+    <!-- Performance Overview -->
+    <div class="analytics-grid">
+        <div class="card performance-metrics">
+            <div class="card-header">
+                <h2>Performance Metrics</h2>
+                <div class="card-actions">
+                    <select id="timeframeSelector" class="select-sm">
+                        <option value="1M">1 Month</option>
+                        <option value="3M">3 Months</option>
+                        <option value="6M">6 Months</option>
+                        <option value="1Y">1 Year</option>
+                        <option value="ALL">All Time</option>
+                    </select>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="metrics-grid">
+                    <div class="metric-item">
+                        <span class="metric-label">Total Return</span>
+                        <span class="metric-value">{{ '%0.2f' | format(metrics.total_return * 100) }}%</span>
+                    </div>
+                    <div class="metric-item">
+                        <span class="metric-label">Sharpe Ratio</span>
+                        <span class="metric-value">{{ '%0.2f' | format(metrics.sharpe_ratio) }}</span>
+                    </div>
+                    <div class="metric-item">
+                        <span class="metric-label">Max Drawdown</span>
+                        <span class="metric-value">{{ '%0.2f' | format(metrics.max_drawdown * 100) }}%</span>
+                    </div>
+                    <div class="metric-item">
+                        <span class="metric-label">Win Rate</span>
+                        <span class="metric-value">{{ '%0.2f' | format(metrics.win_rate * 100) }}%</span>
+                    </div>
+                </div>
+                <div class="chart-container">
+                    <canvas id="equityCurveChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Risk Analysis -->
+        <div class="card risk-analysis">
+            <div class="card-header">
+                <h2>Risk Analysis</h2>
+            </div>
+            <div class="card-body">
+                <div class="risk-metrics">
+                    <div class="metric-item">
+                        <span class="metric-label">Value at Risk (95%)</span>
+                        <span class="metric-value">${{ '%0.2f' | format(risk_metrics.var) }}</span>
+                    </div>
+                    <div class="metric-item">
+                        <span class="metric-label">Expected Shortfall</span>
+                        <span class="metric-value">${{ '%0.2f' | format(risk_metrics.cvar) }}</span>
+                    </div>
+                    <div class="metric-item">
+                        <span class="metric-label">Beta</span>
+                        <span class="metric-value">{{ '%0.2f' | format(risk_metrics.beta) }}</span>
+                    </div>
+                </div>
+                <div class="chart-container">
+                    <canvas id="riskDistributionChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Trade Analysis -->
+        <div class="card trade-analysis">
+            <div class="card-header">
+                <h2>Trade Analysis</h2>
+                <div class="card-actions">
+                    <button class="btn btn-outline btn-sm" onclick="exportTradeData()">
+                        <i class="fas fa-download"></i> Export
+                    </button>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="analysis-tabs">
+                    <button class="tab-btn active" data-tab="time">Time Analysis</button>
+                    <button class="tab-btn" data-tab="symbol">Symbol Analysis</button>
+                    <button class="tab-btn" data-tab="strategy">Strategy Analysis</button>
+                </div>
+                <div class="tab-content">
+                    <div id="timeAnalysis" class="tab-pane active">
+                        <div class="chart-container">
+                            <canvas id="hourlyPerformanceChart"></canvas>
+                        </div>
+                        <div class="chart-container">
+                            <canvas id="dailyPerformanceChart"></canvas>
+                        </div>
+                    </div>
+                    <div id="symbolAnalysis" class="tab-pane">
+                        <div class="chart-container">
+                            <canvas id="symbolPerformanceChart"></canvas>
+                        </div>
+                    </div>
+                    <div id="strategyAnalysis" class="tab-pane">
+                        <div class="chart-container">
+                            <canvas id="strategyPerformanceChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Position Sizing Calculator -->
+        <div class="card position-calculator">
+            <div class="card-header">
+                <h2>Position Sizing Calculator</h2>
+            </div>
+            <div class="card-body">
+                <div class="calculator-form">
+                    <div class="form-group">
+                        <label>Risk Per Trade (%)</label>
+                        <input type="number" id="riskPerTradeInput" class="input-sm" value="1" step="0.1">
+                    </div>
+                    <div class="form-group">
+                        <label>Entry Price</label>
+                        <input type="number" id="entryPriceInput" class="input-sm" step="0.00000001">
+                    </div>
+                    <div class="form-group">
+                        <label>Stop Loss</label>
+                        <input type="number" id="stopLossInput" class="input-sm" step="0.00000001">
+                    </div>
+                    <div class="calculator-result">
+                        <span class="result-label">Position Size:</span>
+                        <span id="positionSizeResult" class="result-value">0.00</span>
+                    </div>
+                    <div class="calculator-result">
+                        <span class="result-label">Total Risk:</span>
+                        <span id="totalRiskResult" class="result-value">$0.00</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="{{ url_for('static', filename='js/analytics-dashboard.js') }}"></script>
+{% endblock %}
