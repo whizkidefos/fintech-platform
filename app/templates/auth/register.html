@@ -1,34 +1,28 @@
-{% extends "auth/base.html" %}
+{% extends "base.html" %}
+
+{% block title %}Register{% endblock %}
 
 {% block content %}
 <div class="auth-container">
     <div class="auth-card">
-        <div class="text-center mb-4">
-            <i class="fas fa-user-plus fa-3x text-primary"></i>
-            <h2>Create Account</h2>
-        </div>
-
+        <h2 class="card-title">Register</h2>
         <form method="POST" action="{{ url_for('auth.register') }}">
-            <div class="form-group">
-                <label for="username">Username</label>
-                <input type="text" id="username" name="username" required autofocus>
+            <div class="mb-3">
+                <input type="text" class="form-control" id="username" name="username" placeholder="Username" required>
             </div>
-            
-            <div class="form-group">
-                <label for="email">Email</label>
-                <input type="email" id="email" name="email" required>
+            <div class="mb-3">
+                <input type="email" class="form-control" id="email" name="email" placeholder="Email" required>
             </div>
-            
-            <div class="form-group">
-                <label for="password">Password</label>
-                <input type="password" id="password" name="password" required>
+            <div class="mb-3">
+                <input type="password" class="form-control" id="password" name="password" placeholder="Password" required>
             </div>
-            
-            <button type="submit">Register</button>
+            <div class="mb-3">
+                <input type="password" class="form-control" id="confirm_password" name="confirm_password" placeholder="Confirm Password" required>
+            </div>
+            <button type="submit" class="btn btn-primary">Register</button>
         </form>
-        
         <div class="auth-links">
-            <p>Already have an account? <a href="{{ url_for('auth.login') }}">Login</a></p>
+            <p>Already have an account? <a href="{{ url_for('auth.login') }}">Login here</a></p>
         </div>
     </div>
 </div>

@@ -1,121 +1,120 @@
-import json
+from flask import current_app
 from flask_sock import Sock
-from datetime import datetime
-from app.utils.market_data import MarketDataFetcher
-from app.utils.trading_signals import SignalGenerator
+from app.utils.signal_generator import SignalGenerator
+import json
+import logging
 
-class WebSocketManager:
-    def __init__(self):
-        self.clients = set()
-        self.market_data = MarketDataFetcher()
-        self.running = False
-
-    def handle_client(self, ws):
-        """Handle individual WebSocket client connections"""
-        self.clients.add(ws)
-        try:
-            while True:
-                try:
-                    # Handle incoming messages
-                    message = ws.receive()
-                    if message:
-                        data = json.loads(message)
-                        self.process_message(ws, data)
-                except json.JSONDecodeError:
-                    continue
-        except Exception as e:
-            print(f"WebSocket error: {e}")
-        finally:
-            self.clients.remove(ws)
-
-    def process_message(self, ws, data):
-        """Process incoming WebSocket messages"""
-        try:
-            message_type = data.get('type')
-            if message_type == 'subscribe':
-                self.handle_subscription(ws, data)
-            elif message_type == 'get_price':
-                self.handle_price_request(ws, data)
-            elif message_type == 'get_signals':
-                self.handle_signal_request(ws, data)
-        except Exception as e:
-            print(f"Error processing message: {e}")
-
-    def handle_subscription(self, ws, data):
-        """Handle subscription requests"""
-        symbols = data.get('symbols', [])
-        if symbols:
-            # Send initial data for subscribed symbols
-            for symbol in symbols:
-                self.send_price_update(ws, symbol)
-                self.send_signals_update(ws, symbol)
-
-    def handle_price_request(self, ws, data):
-        """Handle price update requests"""
-        symbol = data.get('symbol')
-        if symbol:
-            self.send_price_update(ws, symbol)
-
-    def handle_signal_request(self, ws, data):
-        """Handle signal requests"""
-        symbol = data.get('symbol')
-        if symbol:
-            self.send_signals_update(ws, symbol)
-
-    def send_price_update(self, ws, symbol):
-        """Send price updates to client"""
-        try:
-            ticker = self.market_data.fetch_ticker(symbol)
-            if ticker:
-                ws.send(json.dumps({
-                    'type': 'price_update',
-                    'data': {
-                        'symbol': symbol,
-                        'price': ticker['last_price'],
-                        'timestamp': datetime.now().isoformat()
-                    }
-                }))
-        except Exception as e:
-            print(f"Error sending price update: {e}")
-
-    def send_signals_update(self, ws, symbol):
-        """Send trading signals to client"""
-        try:
-            data = self.market_data.fetch_ohlcv(symbol, '1m', limit=100)
-            if data is not None:
-                signal_generator = SignalGenerator(data)
-                signals = signal_generator.generate_signals()
-                
-                if signals:
-                    ws.send(json.dumps({
-                        'type': 'signals_update',
-                        'data': {
-                            'symbol': symbol,
-                            'signals': signals,
-                            'timestamp': datetime.now().isoformat()
-                        }
-                    }))
-        except Exception as e:
-            print(f"Error sending signals update: {e}")
-
-    def broadcast(self, message):
-        """Broadcast message to all connected clients"""
-        for client in self.clients.copy():  # Use copy to avoid modification during iteration
-            try:
-                client.send(json.dumps(message))
-            except Exception:
-                self.clients.discard(client)
-
-# Create singleton instance
-websocket_manager = WebSocketManager()
+sock = Sock()
+logger = logging.getLogger(__name__)
 
 def init_websocket(app):
     """Initialize WebSocket functionality"""
-    sock = Sock(app)
-    
-    @sock.route('/ws')
-    def ws_handler(ws):
-        """Handle WebSocket connections"""
-        websocket_manager.handle_client(ws)
-    
-    return sock
+    try:
+        sock.init_app(app)
+        
+        @sock.route('/ws/signals')
+        def signals(ws):
+            """WebSocket endpoint for real-time trading signals"""
+            try:
+                signal_gen = SignalGenerator()
+                
+                while True:
+                    # Receive message from client
+                    message = ws.receive()
+                    data = json.loads(message)
+                    
+                    # Process message based on type
+                    if data['type'] == 'subscribe':
+                        portfolio_id = data.get('portfolio_id')
+                        if not portfolio_id:
+                            ws.send(json.dumps({
+                                'error': 'Portfolio ID required'
+                            }))
+                            continue
+                            
+                        # Generate signals for portfolio
+                        try:
+                            signals = signal_gen.generate_signals(portfolio_id)
+                            ws.send(json.dumps({
+                                'type': 'signals',
+                                'data': signals
+                            }))
+                        except Exception as e:
+                            ws.send(json.dumps({
+                                'error': str(e)
+                            }))
+                            
+                    elif data['type'] == 'unsubscribe':
+                        break
+                        
+            except Exception as e:
+                logger.error(f"WebSocket error: {str(e)}")
+                
+    except Exception as e:
+        logger.error(f"WebSocket initialization failed: {str(e)}")
+        
+@sock.route('/ws/market')
+def market_data(ws):
+    """WebSocket endpoint for real-time market data"""
+    try:
+        while True:
+            # Receive message from client
+            message = ws.receive()
+            data = json.loads(message)
+            
+            # Process message based on type
+            if data['type'] == 'subscribe':
+                symbols = data.get('symbols', [])
+                if not symbols:
+                    ws.send(json.dumps({
+                        'error': 'Symbols required'
+                    }))
+                    continue
+                    
+                # Subscribe to market data
+                try:
+                    # Implementation would depend on your market data source
+                    pass
+                except Exception as e:
+                    ws.send(json.dumps({
+                        'error': str(e)
+                    }))
+                    
+            elif data['type'] == 'unsubscribe':
+                break
+                
+    except Exception as e:
+        logger.error(f"WebSocket error: {str(e)}")
+        
+@sock.route('/ws/portfolio')
+def portfolio_updates(ws):
+    """WebSocket endpoint for real-time portfolio updates"""
+    try:
+        while True:
+            # Receive message from client
+            message = ws.receive()
+            data = json.loads(message)
+            
+            # Process message based on type
+            if data['type'] == 'subscribe':
+                portfolio_id = data.get('portfolio_id')
+                if not portfolio_id:
+                    ws.send(json.dumps({
+                        'error': 'Portfolio ID required'
+                    }))
+                    continue
+                    
+                # Subscribe to portfolio updates
+                try:
+                    # Implementation would depend on your portfolio update logic
+                    pass
+                except Exception as e:
+                    ws.send(json.dumps({
+                        'error': str(e)
+                    }))
+                    
+            elif data['type'] == 'unsubscribe':
+                break
+                
+    except Exception as e:
+        logger.error(f"WebSocket error: {str(e)}")

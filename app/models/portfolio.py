@@ -1,165 +1,118 @@
-from app import db
 from datetime import datetime
+from app import db
 from decimal import Decimal
 
 class Portfolio(db.Model):
+    __tablename__ = 'portfolios'
+    
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    name = db.Column(db.String(64), nullable=False, default='Default Portfolio')
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    name = db.Column(db.String(64), nullable=False)
     description = db.Column(db.String(256))
-    cash_balance = db.Column(db.Numeric(20, 8), nullable=False, default=0)
-    equity_value = db.Column(db.Numeric(20, 8), nullable=False, default=0)
-    realized_pnl = db.Column(db.Numeric(20, 8), nullable=False, default=0)
-    unrealized_pnl = db.Column(db.Numeric(20, 8), nullable=False, default=0)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
-    # Relationships
-    positions = db.relationship('Position', backref='portfolio', lazy='dynamic')
-    transactions = db.relationship('Transaction', backref='portfolio', lazy='dynamic')
-    snapshots = db.relationship('PortfolioSnapshot', backref='portfolio', lazy='dynamic')
-
-    def update_portfolio_value(self):
-        """Update portfolio equity value and unrealized P&L"""
-        from app.utils.market_data import MarketDataFetcher
-        market_data = MarketDataFetcher()
-        
-        total_equity = Decimal('0')
-        total_unrealized_pnl = Decimal('0')
-        
-        for position in self.positions.filter_by(status='open'):
-            current_price = Decimal(str(market_data.fetch_ticker(position.asset.symbol)['last']))
-            position_value = current_price * Decimal(str(position.quantity))
-            
-            # Calculate unrealized P&L
-            if position.position_type == 'long':
-                unrealized_pnl = position_value - (Decimal(str(position.entry_price)) * Decimal(str(position.quantity)))
-            else:  # short position
-                unrealized_pnl = (Decimal(str(position.entry_price)) * Decimal(str(position.quantity))) - position_value
-            
-            total_equity += position_value
-            total_unrealized_pnl += unrealized_pnl
-        
-        # Add cash balance to total equity
-        total_equity += self.cash_balance
-        
-        # Update portfolio values
-        self.equity_value = total_equity
-        self.unrealized_pnl = total_unrealized_pnl
-        db.session.commit()
-
-    def create_snapshot(self):
-        """Create a portfolio value snapshot"""
-        snapshot = PortfolioSnapshot(
-            portfolio_id=self.id,
-            cash_balance=self.cash_balance,
-            equity_value=self.equity_value,
-            realized_pnl=self.realized_pnl,
-            unrealized_pnl=self.unrealized_pnl
-        )
-        db.session.add(snapshot)
-        db.session.commit()
-        return snapshot
-
-class Position(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    portfolio_id = db.Column(db.Integer, db.ForeignKey('portfolio.id'), nullable=False)
-    asset_id = db.Column(db.Integer, db.ForeignKey('asset.id'), nullable=False)
-    position_type = db.Column(db.String(10), nullable=False)  # 'long' or 'short'
-    quantity = db.Column(db.Numeric(20, 8), nullable=False)
-    entry_price = db.Column(db.Numeric(20, 8), nullable=False)
-    current_price = db.Column(db.Numeric(20, 8))
-    liquidation_price = db.Column(db.Numeric(20, 8))
-    stop_loss = db.Column(db.Numeric(20, 8))
-    take_profit = db.Column(db.Numeric(20, 8))
-    leverage = db.Column(db.Numeric(5, 2), default=1)
-    margin_used = db.Column(db.Numeric(20, 8))
+    # Risk profile (conservative, moderate, aggressive)
+    risk_profile = db.Column(db.String(32), default='moderate')
+    
+    # Portfolio metrics
+    total_value = db.Column(db.Numeric(20, 8), default=0)
+    total_cost = db.Column(db.Numeric(20, 8), default=0)
     unrealized_pnl = db.Column(db.Numeric(20, 8), default=0)
     realized_pnl = db.Column(db.Numeric(20, 8), default=0)
-    status = db.Column(db.String(20), default='open')  # open, closed, liquidated
-    opened_at = db.Column(db.DateTime, default=datetime.utcnow)
-    closed_at = db.Column(db.DateTime)
-    closing_price = db.Column(db.Numeric(20, 8))
+    day_change = db.Column(db.Numeric(20, 8), default=0)
+    day_change_pct = db.Column(db.Numeric(10, 4), default=0)
     
     # Relationships
-    transactions = db.relationship('Transaction', backref='position', lazy='dynamic')
-
-    def update_position_value(self):
-        """Update position's current value and unrealized P&L"""
-        from app.utils.market_data import MarketDataFetcher
-        market_data = MarketDataFetcher()
-        
-        try:
-            current_price = Decimal(str(market_data.fetch_ticker(self.asset.symbol)['last']))
-            self.current_price = current_price
-            
-            position_value = current_price * Decimal(str(self.quantity))
-            entry_value = Decimal(str(self.entry_price)) * Decimal(str(self.quantity))
-            
-            if self.position_type == 'long':
-                self.unrealized_pnl = position_value - entry_value
-            else:  # short position
-                self.unrealized_pnl = entry_value - position_value
-                
-            # Check for liquidation
-            if self.check_liquidation(current_price):
-                self.liquidate()
-            
-            db.session.commit()
-            
-        except Exception as e:
-            print(f"Error updating position value: {e}")
-            db.session.rollback()
-
-    def check_liquidation(self, current_price):
-        """Check if position should be liquidated"""
-        if not self.liquidation_price:
-            return False
-            
-        if self.position_type == 'long':
-            return current_price <= self.liquidation_price
-        return current_price >= self.liquidation_price
-
-    def liquidate(self):
-        """Liquidate the position"""
-        self.status = 'liquidated'
-        self.closed_at = datetime.utcnow()
-        self.closing_price = self.current_price
-        self.realized_pnl = self.unrealized_pnl
-        
-        # Create liquidation transaction
-        transaction = Transaction(
-            portfolio_id=self.portfolio_id,
-            position_id=self.id,
-            asset_id=self.asset_id,
-            transaction_type='liquidation',
-            quantity=self.quantity,
-            price=self.current_price,
-            fee=0,  # Might want to include liquidation fees
-            status='completed'
-        )
-        db.session.add(transaction)
-        
-        # Update portfolio
-        self.portfolio.realized_pnl += self.realized_pnl
-        self.portfolio.cash_balance += (self.margin_used + self.realized_pnl)
-        
-class PortfolioSnapshot(db.Model):
-    """Historical portfolio value snapshots"""
-    id = db.Column(db.Integer, primary_key=True)
-    portfolio_id = db.Column(db.Integer, db.ForeignKey('portfolio.id'), nullable=False)
-    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
-    cash_balance = db.Column(db.Numeric(20, 8), nullable=False)
-    equity_value = db.Column(db.Numeric(20, 8), nullable=False)
-    realized_pnl = db.Column(db.Numeric(20, 8), nullable=False)
-    unrealized_pnl = db.Column(db.Numeric(20, 8), nullable=False)
+    positions = db.relationship('Position', backref='portfolio', lazy=True)
+    transactions = db.relationship('Transaction', backref='portfolio', lazy=True)
+    trading_signals = db.relationship('TradingSignal', backref='portfolio', lazy=True)
     
-    def to_dict(self):
-        return {
-            'timestamp': self.timestamp.isoformat(),
-            'cash_balance': float(self.cash_balance),
-            'equity_value': float(self.equity_value),
-            'realized_pnl': float(self.realized_pnl),
-            'unrealized_pnl': float(self.unrealized_pnl),
-            'total_value': float(self.cash_balance + self.equity_value)
-        }
+    def __repr__(self):
+        return f'<Portfolio {self.name}>'
+
+class Position(db.Model):
+    __tablename__ = 'positions'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    portfolio_id = db.Column(db.Integer, db.ForeignKey('portfolios.id'), nullable=False)
+    asset_id = db.Column(db.Integer, db.ForeignKey('assets.id'), nullable=False)
+    
+    # Position details
+    quantity = db.Column(db.Numeric(20, 8), nullable=False)
+    cost_basis = db.Column(db.Numeric(20, 8), nullable=False)
+    current_value = db.Column(db.Numeric(20, 8), nullable=False)
+    unrealized_pnl = db.Column(db.Numeric(20, 8), default=0)
+    realized_pnl = db.Column(db.Numeric(20, 8), default=0)
+    return_pct = db.Column(db.Numeric(10, 4), default=0)
+    
+    # Position metrics
+    day_change = db.Column(db.Numeric(20, 8), default=0)
+    day_change_pct = db.Column(db.Numeric(10, 4), default=0)
+    
+    # Timestamps
+    entry_date = db.Column(db.DateTime, default=datetime.utcnow)
+    last_updated = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    def __repr__(self):
+        return f'<Position {self.asset.symbol} {self.quantity}>'
+
+class Transaction(db.Model):
+    __tablename__ = 'transactions'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    portfolio_id = db.Column(db.Integer, db.ForeignKey('portfolios.id'), nullable=False)
+    asset_id = db.Column(db.Integer, db.ForeignKey('assets.id'), nullable=False)
+    
+    # Transaction details
+    transaction_type = db.Column(db.String(32), nullable=False)  # buy, sell
+    quantity = db.Column(db.Numeric(20, 8), nullable=False)
+    price = db.Column(db.Numeric(20, 8), nullable=False)
+    total_amount = db.Column(db.Numeric(20, 8), nullable=False)
+    fees = db.Column(db.Numeric(20, 8), default=0)
+    
+    # Order details
+    order_type = db.Column(db.String(32), nullable=False)  # market, limit
+    order_status = db.Column(db.String(32), nullable=False)  # filled, cancelled
+    
+    # Signal reference (if transaction was triggered by a signal)
+    signal_id = db.Column(db.Integer, db.ForeignKey('trading_signals.id'))
+    
+    # Timestamps
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    executed_at = db.Column(db.DateTime)
+    
+    def __repr__(self):
+        return f'<Transaction {self.transaction_type} {self.asset.symbol} {self.quantity}>'
+
+class TradingSignal(db.Model):
+    __tablename__ = 'trading_signals'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    portfolio_id = db.Column(db.Integer, db.ForeignKey('portfolios.id'), nullable=False)
+    asset_id = db.Column(db.Integer, db.ForeignKey('assets.id'), nullable=False)
+    
+    # Signal details
+    signal_type = db.Column(db.String(32), nullable=False)  # entry, exit
+    direction = db.Column(db.String(32), nullable=False)  # long, short
+    strength = db.Column(db.Float, nullable=False)  # 0 to 1
+    confidence = db.Column(db.Float, nullable=False)  # 0 to 1
+    
+    # Signal metadata
+    strategy = db.Column(db.String(64), nullable=False)
+    timeframe = db.Column(db.String(32), nullable=False)
+    status = db.Column(db.String(32), default='active')  # active, executed, expired
+    executed = db.Column(db.Boolean, default=False)
+    
+    # Price levels
+    entry_price = db.Column(db.Numeric(20, 8))
+    stop_loss = db.Column(db.Numeric(20, 8))
+    take_profit = db.Column(db.Numeric(20, 8))
+    
+    # Timestamps
+    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    expiration = db.Column(db.DateTime)
+    executed_at = db.Column(db.DateTime)
+    
+    def __repr__(self):
+        return f'<TradingSignal {self.signal_type} {self.asset.symbol} {self.direction}>'

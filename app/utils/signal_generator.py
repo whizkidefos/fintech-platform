@@ -1,162 +1,375 @@
-from typing import Dict, List, Any
-import pandas as pd
+from typing import Dict, List, Optional
+from datetime import datetime, timedelta
 import numpy as np
-from app.utils.indicators import TechnicalIndicators, VolumeIndicators, VolatilityIndicators
+import pandas as pd
+from app.models import Asset, TradingSignal, Portfolio
+from app.utils.market_data import MarketDataFetcher
+import logging
+from dataclasses import dataclass
 
-class SignalStrategy:
-    def __init__(self, data: pd.DataFrame):
-        self.data = data
-        self.indicators = TechnicalIndicators()
-        self.volume_indicators = VolumeIndicators()
-        self.volatility_indicators = VolatilityIndicators()
-        self.signals = []
+logger = logging.getLogger(__name__)
 
-    def _check_volume_based_signals(self):
-        """Check for volume-based signals"""
-        avg_volume = self.data['volume'].rolling(window=20).mean()
+@dataclass
+class SignalConfig:
+    strategy: str
+    timeframe: str
+    lookback: int
+    threshold: float
+    min_confidence: float
+    max_signals: int
+
+class SignalGenerator:
+    def __init__(self):
+        self.market_data = MarketDataFetcher()
+        self.logger = logging.getLogger(__name__)
         
-        for i in range(1, len(self.data)):
-            # Volume spike with price increase
-            if (self.data['volume'].iloc[i] > 2 * avg_volume.iloc[i] and 
-                self.data['close'].iloc[i] > self.data['close'].iloc[i-1]):
-                self._add_signal(i, 'buy', 'Volume Spike', 0.5)
+        # Default configurations for different strategies
+        self.configs = {
+            'trend_following': SignalConfig(
+                strategy='trend_following',
+                timeframe='1d',
+                lookback=20,
+                threshold=0.02,
+                min_confidence=0.7,
+                max_signals=5
+            ),
+            'mean_reversion': SignalConfig(
+                strategy='mean_reversion',
+                timeframe='1h',
+                lookback=50,
+                threshold=2.0,
+                min_confidence=0.8,
+                max_signals=3
+            ),
+            'breakout': SignalConfig(
+                strategy='breakout',
+                timeframe='1d',
+                lookback=50,
+                threshold=0.03,
+                min_confidence=0.75,
+                max_signals=3
+            ),
+            'momentum': SignalConfig(
+                strategy='momentum',
+                timeframe='1d',
+                lookback=14,
+                threshold=70,
+                min_confidence=0.65,
+                max_signals=5
+            )
+        }
+
+    def generate_signals(self, portfolio: Portfolio) -> List[Dict]:
+        """Generate trading signals for a portfolio"""
+        try:
+            signals = []
             
-            # OBV trend
-            if (self.data['obv'].iloc[i] > self.data['obv'].iloc[i-1] and 
-                self.data['close'].iloc[i] < self.data['close'].iloc[i-1]):
-                self._add_signal(i, 'buy', 'OBV Divergence', 0.6)
+            # Get portfolio assets
+            assets = [position.asset for position in portfolio.positions]
+            
+            # Add market indices and potential assets
+            watchlist = self._get_watchlist(portfolio)
+            assets.extend(watchlist)
+            
+            # Generate signals for each strategy
+            for strategy, config in self.configs.items():
+                strategy_signals = self._generate_strategy_signals(
+                    assets, config
+                )
+                signals.extend(strategy_signals)
+            
+            # Filter and rank signals
+            signals = self._filter_signals(signals, portfolio)
+            signals = self._rank_signals(signals)
+            
+            # Create signal records
+            self._create_signal_records(signals, portfolio)
+            
+            return signals
+            
+        except Exception as e:
+            self.logger.error(f"Error generating signals: {str(e)}")
+            return []
 
-    def _check_ichimoku_signals(self):
-        """Check for Ichimoku Cloud signals"""
-        ichimoku = self.indicators.calculate_ichimoku(self.data['high'], self.data['low'])
+    def _generate_strategy_signals(self, assets: List[Asset],
+                                 config: SignalConfig) -> List[Dict]:
+        """Generate signals for a specific strategy"""
+        signals = []
         
-        for i in range(26, len(self.data)):  # Start after cloud formation
-            # Trend signals
-            if (ichimoku['conversion_line'].iloc[i] > ichimoku['base_line'].iloc[i] and
-                self.data['close'].iloc[i] > ichimoku['span_a'].iloc[i] and
-                self.data['close'].iloc[i] > ichimoku['span_b'].iloc[i]):
-                self._add_signal(i, 'buy', 'Ichimoku Bullish', 0.7)
-            elif (ichimoku['conversion_line'].iloc[i] < ichimoku['base_line'].iloc[i] and
-                  self.data['close'].iloc[i] < ichimoku['span_a'].iloc[i] and
-                  self.data['close'].iloc[i] < ichimoku['span_b'].iloc[i]):
-                self._add_signal(i, 'sell', 'Ichimoku Bearish', 0.7)
+        for asset in assets:
+            try:
+                # Get historical data
+                candles = self.market_data.get_candles(
+                    asset.symbol,
+                    timeframe=config.timeframe,
+                    limit=config.lookback
+                )
+                
+                if not candles:
+                    continue
+                
+                # Convert to dataframe
+                df = pd.DataFrame(candles)
+                
+                # Generate signal based on strategy
+                if config.strategy == 'trend_following':
+                    signal = self._trend_following_strategy(df, config)
+                elif config.strategy == 'mean_reversion':
+                    signal = self._mean_reversion_strategy(df, config)
+                elif config.strategy == 'breakout':
+                    signal = self._breakout_strategy(df, config)
+                elif config.strategy == 'momentum':
+                    signal = self._momentum_strategy(df, config)
+                else:
+                    continue
+                
+                if signal:
+                    signal['asset'] = asset
+                    signals.append(signal)
+                    
+            except Exception as e:
+                self.logger.error(
+                    f"Error generating {config.strategy} signals for "
+                    f"{asset.symbol}: {str(e)}"
+                )
+                continue
+        
+        return signals
 
-    def _add_signal(self, index: int, signal_type: str, strategy: str, strength: float):
-        """Add a signal to the signals list"""
-        signal = {
-            'timestamp': self.data.index[index],
-            'type': signal_type,
-            'strategy': strategy,
-            'strength': strength,
-            'price': self.data['close'].iloc[index],
-            'indicators': {
-                'rsi': self.data['rsi'].iloc[index],
-                'macd': self.data['macd'].iloc[index],
-                'volume': self.data['volume'].iloc[index],
-                'volatility': self.data['volatility'].iloc[index]
+    def _trend_following_strategy(self, df: pd.DataFrame,
+                                config: SignalConfig) -> Optional[Dict]:
+        """Generate trend following signals"""
+        try:
+            # Calculate SMAs
+            df['sma_short'] = df['close'].rolling(window=20).mean()
+            df['sma_long'] = df['close'].rolling(window=50).mean()
+            
+            # Get latest values
+            current_price = df['close'].iloc[-1]
+            sma_short = df['sma_short'].iloc[-1]
+            sma_long = df['sma_long'].iloc[-1]
+            
+            # Calculate signal
+            if sma_short > sma_long * (1 + config.threshold):
+                direction = 'long'
+                strength = min((sma_short/sma_long - 1) / config.threshold, 1)
+            elif sma_short < sma_long * (1 - config.threshold):
+                direction = 'short'
+                strength = min((1 - sma_short/sma_long) / config.threshold, 1)
+            else:
+                return None
+            
+            return {
+                'strategy': config.strategy,
+                'direction': direction,
+                'strength': strength,
+                'confidence': 0.8,
+                'price': current_price,
+                'timestamp': datetime.now()
             }
-        }
-        self.signals.append(signal)
-
-    def get_combined_signal(self, timeframe: str = '1h') -> Dict[str, Any]:
-        """Generate a combined signal based on all strategies"""
-        all_signals = self.generate_signals()
-        if not all_signals:
+            
+        except Exception as e:
+            self.logger.error(f"Error in trend following strategy: {str(e)}")
             return None
 
-        # Get recent signals within the timeframe
-        recent_signals = [s for s in all_signals if s['timestamp'] > pd.Timestamp.now() - pd.Timedelta(timeframe)]
-        
-        if not recent_signals:
+    def _mean_reversion_strategy(self, df: pd.DataFrame,
+                               config: SignalConfig) -> Optional[Dict]:
+        """Generate mean reversion signals"""
+        try:
+            # Calculate Bollinger Bands
+            df['sma'] = df['close'].rolling(window=20).mean()
+            df['std'] = df['close'].rolling(window=20).std()
+            df['upper'] = df['sma'] + 2 * df['std']
+            df['lower'] = df['sma'] - 2 * df['std']
+            
+            # Get latest values
+            current_price = df['close'].iloc[-1]
+            upper = df['upper'].iloc[-1]
+            lower = df['lower'].iloc[-1]
+            
+            # Calculate signal
+            if current_price > upper:
+                direction = 'short'
+                strength = min((current_price/upper - 1) * 5, 1)
+            elif current_price < lower:
+                direction = 'long'
+                strength = min((1 - current_price/lower) * 5, 1)
+            else:
+                return None
+            
+            return {
+                'strategy': config.strategy,
+                'direction': direction,
+                'strength': strength,
+                'confidence': 0.7,
+                'price': current_price,
+                'timestamp': datetime.now()
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error in mean reversion strategy: {str(e)}")
             return None
 
-        # Calculate combined signal strength
-        buy_strength = sum([s['strength'] for s in recent_signals if s['type'] == 'buy'])
-        sell_strength = sum([s['strength'] for s in recent_signals if s['type'] == 'sell'])
+    def _breakout_strategy(self, df: pd.DataFrame,
+                          config: SignalConfig) -> Optional[Dict]:
+        """Generate breakout signals"""
+        try:
+            lookback = 20
+            
+            # Calculate support and resistance
+            high_max = df['high'].rolling(window=lookback).max()
+            low_min = df['low'].rolling(window=lookback).min()
+            
+            # Get latest values
+            current_price = df['close'].iloc[-1]
+            resistance = high_max.iloc[-2]  # Use previous period
+            support = low_min.iloc[-2]
+            
+            # Calculate signal
+            if current_price > resistance * (1 + config.threshold):
+                direction = 'long'
+                strength = min((current_price/resistance - 1) / config.threshold, 1)
+            elif current_price < support * (1 - config.threshold):
+                direction = 'short'
+                strength = min((1 - current_price/support) / config.threshold, 1)
+            else:
+                return None
+            
+            return {
+                'strategy': config.strategy,
+                'direction': direction,
+                'strength': strength,
+                'confidence': 0.75,
+                'price': current_price,
+                'timestamp': datetime.now()
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error in breakout strategy: {str(e)}")
+            return None
+
+    def _momentum_strategy(self, df: pd.DataFrame,
+                         config: SignalConfig) -> Optional[Dict]:
+        """Generate momentum signals"""
+        try:
+            # Calculate RSI
+            delta = df['close'].diff()
+            gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+            loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+            rs = gain / loss
+            df['rsi'] = 100 - (100 / (1 + rs))
+            
+            # Get latest values
+            current_price = df['close'].iloc[-1]
+            rsi = df['rsi'].iloc[-1]
+            
+            # Calculate signal
+            if rsi > 70:
+                direction = 'short'
+                strength = min((rsi - 70) / 30, 1)
+            elif rsi < 30:
+                direction = 'long'
+                strength = min((30 - rsi) / 30, 1)
+            else:
+                return None
+            
+            return {
+                'strategy': config.strategy,
+                'direction': direction,
+                'strength': strength,
+                'confidence': 0.65,
+                'price': current_price,
+                'timestamp': datetime.now()
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error in momentum strategy: {str(e)}")
+            return None
+
+    def _filter_signals(self, signals: List[Dict],
+                       portfolio: Portfolio) -> List[Dict]:
+        """Filter signals based on various criteria"""
+        filtered = []
         
-        # Determine overall signal
-        if buy_strength > sell_strength and buy_strength > 1.5:
-            signal_type = 'buy'
-            strength = buy_strength
-        elif sell_strength > buy_strength and sell_strength > 1.5:
-            signal_type = 'sell'
-            strength = sell_strength
-        else:
-            signal_type = 'neutral'
-            strength = 0
-
-        return {
-            'timestamp': pd.Timestamp.now(),
-            'type': signal_type,
-            'strength': strength,
-            'signals_count': len(recent_signals),
-            'contributing_signals': recent_signals
-        }
-
-class RiskManager:
-    def __init__(self, portfolio_value: float, risk_per_trade: float = 0.02):
-        self.portfolio_value = portfolio_value
-        self.risk_per_trade = risk_per_trade
-
-    def calculate_position_size(self, entry_price: float, stop_loss: float) -> Dict[str, float]:
-        """Calculate optimal position size based on risk parameters"""
-        risk_amount = self.portfolio_value * self.risk_per_trade
-        price_risk = abs(entry_price - stop_loss)
-        position_size = risk_amount / price_risk
+        for signal in signals:
+            # Check confidence
+            if signal['confidence'] < self.configs[signal['strategy']].min_confidence:
+                continue
+            
+            # Check existing positions
+            asset = signal['asset']
+            position = next(
+                (p for p in portfolio.positions if p.asset_id == asset.id),
+                None
+            )
+            
+            if position and signal['direction'] == 'long':
+                continue
+                
+            if not position and signal['direction'] == 'short':
+                continue
+            
+            filtered.append(signal)
         
-        return {
-            'position_size': position_size,
-            'risk_amount': risk_amount,
-            'price_risk': price_risk,
-            'max_loss': risk_amount
-        }
+        return filtered
 
-    def adjust_for_correlation(self, position_size: float, correlation_matrix: pd.DataFrame) -> float:
-        """Adjust position size based on correlation with existing positions"""
-        # Implement correlation-based position sizing
-        return position_size * 0.8  # Example adjustment
-
-    def generate_stop_loss(self, entry_price: float, atr: float, 
-                          multiplier: float = 2.0) -> Dict[str, float]:
-        """Generate stop loss levels based on ATR"""
-        stop_loss = entry_price - (atr * multiplier)
-        return {
-            'stop_loss': stop_loss,
-            'risk_amount': entry_price - stop_loss
-        }
-
-    def generate_take_profit(self, entry_price: float, stop_loss: float, 
-                           risk_reward_ratio: float = 2.0) -> float:
-        """Generate take profit level based on risk-reward ratio"""
-        risk = abs(entry_price - stop_loss)
-        return entry_price + (risk * risk_reward_ratio)
-
-class SignalExecutor:
-    def __init__(self, risk_manager: RiskManager):
-        self.risk_manager = risk_manager
-
-    def prepare_order(self, signal: Dict[str, Any], current_price: float, 
-                     atr: float) -> Dict[str, Any]:
-        """Prepare order details based on signal and risk management"""
-        # Generate stop loss
-        stop_loss = self.risk_manager.generate_stop_loss(current_price, atr)
-        
-        # Calculate position size
-        position_details = self.risk_manager.calculate_position_size(
-            current_price, stop_loss['stop_loss']
+    def _rank_signals(self, signals: List[Dict]) -> List[Dict]:
+        """Rank signals by strength and confidence"""
+        return sorted(
+            signals,
+            key=lambda x: x['strength'] * x['confidence'],
+            reverse=True
         )
+
+    def _create_signal_records(self, signals: List[Dict],
+                             portfolio: Portfolio) -> None:
+        """Create TradingSignal records in database"""
+        try:
+            for signal in signals:
+                trading_signal = TradingSignal(
+                    portfolio_id=portfolio.id,
+                    asset_id=signal['asset'].id,
+                    signal_type=signal['strategy'],
+                    direction=signal['direction'],
+                    strength=signal['strength'],
+                    strategy=signal['strategy'],
+                    confidence=signal['confidence'],
+                    timestamp=signal['timestamp'],
+                    expiration=signal['timestamp'] + timedelta(days=1)
+                )
+                db.session.add(trading_signal)
+            
+            db.session.commit()
+            
+        except Exception as e:
+            self.logger.error(f"Error creating signal records: {str(e)}")
+            db.session.rollback()
+
+    def _get_watchlist(self, portfolio: Portfolio) -> List[Asset]:
+        """Get watchlist assets"""
+        # Implementation would get assets from user's watchlist
+        # This is a simplified version
+        indices = ['^GSPC', '^DJI', '^IXIC']  # S&P 500, Dow, Nasdaq
+        watchlist = []
         
-        # Generate take profit
-        take_profit = self.risk_manager.generate_take_profit(
-            current_price, stop_loss['stop_loss']
-        )
+        for symbol in indices:
+            try:
+                asset = Asset.query.filter_by(symbol=symbol).first()
+                if not asset:
+                    ticker_data = self.market_data.get_ticker(symbol)
+                    asset = Asset(
+                        symbol=symbol,
+                        name=ticker_data['name'],
+                        asset_type='index',
+                        current_price=ticker_data['price']
+                    )
+                    db.session.add(asset)
+                watchlist.append(asset)
+            except Exception as e:
+                self.logger.error(
+                    f"Error adding watchlist asset {symbol}: {str(e)}"
+                )
+                continue
         
-        return {
-            'signal_type': signal['type'],
-            'entry_price': current_price,
-            'stop_loss': stop_loss['stop_loss'],
-            'take_profit': take_profit,
-            'position_size': position_details['position_size'],
-            'risk_amount': position_details['risk_amount'],
-            'timestamp': pd.Timestamp.now()
-        }
+        db.session.commit()
+        return watchlist

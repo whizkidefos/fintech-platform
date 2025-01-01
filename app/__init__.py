@@ -5,6 +5,7 @@ from flask_migrate import Migrate
 from config import Config
 import atexit
 
+# Initialize extensions
 db = SQLAlchemy()
 login_manager = LoginManager()
 migrate = Migrate()
@@ -12,7 +13,8 @@ migrate = Migrate()
 def cleanup_resources():
     """Cleanup function to be called on application exit"""
     try:
-        db.session.remove()
+        if db.session.registry().has():
+            db.session.remove()
     except Exception as e:
         print(f"Cleanup error: {e}")
 
@@ -20,6 +22,7 @@ def create_app(config_class=Config):
     app = Flask(__name__)
     app.config.from_object(config_class)
 
+    # Initialize extensions with app
     db.init_app(app)
     login_manager.init_app(app)
     migrate.init_app(app, db)
@@ -30,21 +33,17 @@ def create_app(config_class=Config):
     # Register cleanup function
     atexit.register(cleanup_resources)
 
-    # Register blueprints
-    from app.routes import auth, dashboard, api
-    app.register_blueprint(auth.bp)
-    app.register_blueprint(dashboard.bp)
-    app.register_blueprint(api.bp)
+    # Import models to ensure they are registered with SQLAlchemy
+    with app.app_context():
+        from app.models import User, Portfolio, Position, Transaction, TradingSignal, Asset
 
-    # Initialize WebSocket after blueprints
-    try:
-        from app.websocket import init_websocket
-        init_websocket(app)
-    except Exception as e:
-        print(f"WebSocket initialization failed: {e}")
+        # Register blueprints
+        from app.routes import auth, dashboard, api
+        app.register_blueprint(auth.bp)
+        app.register_blueprint(dashboard.bp)
+        app.register_blueprint(api.bp)
 
-    @app.route('/health')
-    def health_check():
-        return {'status': 'healthy'}, 200
+        # Create database tables
+        db.create_all()
 
     return app

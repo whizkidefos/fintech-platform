@@ -1,174 +1,186 @@
 from flask import Blueprint, jsonify, request, current_app
 from flask_login import login_required, current_user
-from app.models.portfolio import Portfolio
-from app.models.position import Position
-from app.models.order import Order
-from app.models.signal import TradingSignal
+from app.models import Portfolio, Position, TradingSignal, Asset
 from app.utils.order_executor import OrderExecutor
 from app.utils.signal_generator import SignalGenerator
 from app.utils.market_data import MarketDataFetcher
 from datetime import datetime, timedelta
 from decimal import Decimal
-import pandas as pd
+from app import db
 
-api = Blueprint('api', __name__)
+# Create blueprint with url_prefix
+bp = Blueprint('api', __name__, url_prefix='/api')
 market_data = MarketDataFetcher()
+order_executor = OrderExecutor()
+signal_generator = SignalGenerator()
 
-@api.route('/market-data/<symbol>/ticker', methods=['GET'])
+@bp.route('/ticker/<symbol>', methods=['GET'])
 @login_required
 def get_ticker(symbol):
     try:
-        ticker = market_data.get_ticker(symbol)
-        return jsonify(ticker)
+        ticker_data = market_data.get_ticker(symbol)
+        return jsonify(ticker_data), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 400
 
-@api.route('/market-data/<symbol>/candles', methods=['GET'])
+@bp.route('/candles/<symbol>', methods=['GET'])
 @login_required
 def get_candles(symbol):
-    timeframe = request.args.get('timeframe', '15m')
-    limit = int(request.args.get('limit', 100))
-    
+    timeframe = request.args.get('timeframe', '1h')
+    limit = request.args.get('limit', 100, type=int)
     try:
         candles = market_data.get_candles(symbol, timeframe, limit)
-        return jsonify(candles)
+        return jsonify(candles), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 400
 
-@api.route('/portfolio/summary', methods=['GET'])
+@bp.route('/portfolio/summary', methods=['GET'])
 @login_required
 def get_portfolio_summary():
-    portfolio = Portfolio.query.filter_by(user_id=current_user.id).first()
-    if not portfolio:
-        return jsonify({'error': 'Portfolio not found'}), 404
+    try:
+        portfolio = Portfolio.query.filter_by(user_id=current_user.id).first()
+        if not portfolio:
+            return jsonify({'error': 'Portfolio not found'}), 404
+            
+        summary = {
+            'total_value': portfolio.total_value,
+            'total_cost': portfolio.total_cost,
+            'unrealized_pnl': portfolio.unrealized_pnl,
+            'risk_profile': portfolio.risk_profile
+        }
+        return jsonify(summary), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
 
-    return jsonify({
-        'total_value': float(portfolio.total_value),
-        'cash_balance': float(portfolio.cash_balance),
-        'daily_pnl': float(portfolio.daily_pnl),
-        'daily_change': float(portfolio.daily_change),
-        'open_positions': len(portfolio.positions)
-    })
-
-@api.route('/portfolio/positions', methods=['GET'])
+@bp.route('/positions', methods=['GET'])
 @login_required
 def get_positions():
-    portfolio = Portfolio.query.filter_by(user_id=current_user.id).first()
-    if not portfolio:
-        return jsonify({'error': 'Portfolio not found'}), 404
+    try:
+        portfolio = Portfolio.query.filter_by(user_id=current_user.id).first()
+        if not portfolio:
+            return jsonify({'error': 'Portfolio not found'}), 404
+            
+        positions = []
+        for position in portfolio.positions:
+            pos_data = {
+                'id': position.id,
+                'symbol': position.asset.symbol,
+                'quantity': position.quantity,
+                'cost_basis': position.cost_basis,
+                'current_value': position.current_value,
+                'unrealized_pnl': position.unrealized_pnl,
+                'return_pct': position.return_pct,
+                'entry_date': position.entry_date.isoformat(),
+                'last_updated': position.last_updated.isoformat()
+            }
+            positions.append(pos_data)
+            
+        return jsonify(positions), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
 
-    positions = []
-    for position in portfolio.positions:
-        current_price = market_data.get_ticker(position.symbol)['last']
-        pnl = position.calculate_pnl(Decimal(str(current_price)))
-        
-        positions.append({
-            'id': position.id,
-            'symbol': position.symbol,
-            'side': position.side,
-            'size': float(position.size),
-            'entry_price': float(position.entry_price),
-            'current_price': float(current_price),
-            'pnl': float(pnl),
-            'pnl_percent': float(position.calculate_pnl_percent(Decimal(str(current_price))))
-        })
-
-    return jsonify(positions)
-
-@api.route('/orders', methods=['POST'])
+@bp.route('/orders', methods=['POST'])
 @login_required
 def create_order():
-    data = request.json
-    portfolio = Portfolio.query.filter_by(user_id=current_user.id).first()
-    
-    if not portfolio:
-        return jsonify({'error': 'Portfolio not found'}), 404
-
     try:
-        order = Order(
+        data = request.get_json()
+        portfolio = Portfolio.query.filter_by(user_id=current_user.id).first()
+        if not portfolio:
+            return jsonify({'error': 'Portfolio not found'}), 404
+            
+        # Validate order parameters
+        required_fields = ['symbol', 'side', 'quantity', 'order_type']
+        for field in required_fields:
+            if field not in data:
+                return jsonify({'error': f'Missing required field: {field}'}), 400
+                
+        # Execute order
+        order_result = order_executor.execute_order(
             portfolio_id=portfolio.id,
             symbol=data['symbol'],
             side=data['side'],
-            type=data['type'],
-            size=Decimal(str(data['size'])),
-            status='PENDING'
+            quantity=Decimal(str(data['quantity'])),
+            order_type=data['order_type'],
+            price=data.get('price'),
+            time_in_force=data.get('time_in_force', 'GTC')
         )
-
-        if 'price' in data:
-            order.price = Decimal(str(data['price']))
-        if 'stopLoss' in data:
-            order.stop_loss = Decimal(str(data['stopLoss']))
-        if 'takeProfit' in data:
-            order.take_profit = Decimal(str(data['takeProfit']))
-
-        executor = OrderExecutor(current_app.db.session, market_data)
-        result = executor.execute_order(portfolio, order)
-
-        return jsonify(result)
+        
+        return jsonify(order_result), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 400
 
-@api.route('/positions/<int:position_id>/close', methods=['POST'])
+@bp.route('/positions/<int:position_id>', methods=['DELETE'])
 @login_required
 def close_position(position_id):
-    portfolio = Portfolio.query.filter_by(user_id=current_user.id).first()
-    position = Position.query.get(position_id)
-
-    if not portfolio or not position or position.portfolio_id != portfolio.id:
-        return jsonify({'error': 'Position not found'}), 404
-
     try:
-        executor = OrderExecutor(current_app.db.session, market_data)
-        result = executor.close_position(position)
-        return jsonify(result)
+        position = Position.query.get(position_id)
+        if not position:
+            return jsonify({'error': 'Position not found'}), 404
+            
+        if position.portfolio.user_id != current_user.id:
+            return jsonify({'error': 'Unauthorized'}), 403
+            
+        result = order_executor.close_position(position_id)
+        return jsonify(result), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 400
 
-@api.route('/signals', methods=['GET'])
+@bp.route('/signals', methods=['GET'])
 @login_required
 def get_signals():
-    symbol = request.args.get('symbol')
-    limit = int(request.args.get('limit', 10))
+    try:
+        portfolio = Portfolio.query.filter_by(user_id=current_user.id).first()
+        if not portfolio:
+            return jsonify({'error': 'Portfolio not found'}), 404
+            
+        # Get active signals
+        signals = TradingSignal.query.filter_by(
+            portfolio_id=portfolio.id,
+            status='active',
+            executed=False
+        ).all()
+        
+        signals_data = []
+        for signal in signals:
+            signal_data = {
+                'id': signal.id,
+                'symbol': signal.asset.symbol,
+                'signal_type': signal.signal_type,
+                'direction': signal.direction,
+                'strength': signal.strength,
+                'timestamp': signal.timestamp.isoformat(),
+                'strategy': signal.strategy,
+                'confidence': signal.confidence
+            }
+            signals_data.append(signal_data)
+            
+        return jsonify(signals_data), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
 
-    query = TradingSignal.query.filter_by(active=True)
-    if symbol:
-        query = query.filter_by(symbol=symbol)
-    
-    signals = query.order_by(TradingSignal.timestamp.desc()).limit(limit).all()
-    
-    return jsonify([{
-        'id': signal.id,
-        'symbol': signal.symbol,
-        'type': signal.type,
-        'price': float(signal.price),
-        'strength': float(signal.strength),
-        'timestamp': signal.timestamp.isoformat()
-    } for signal in signals])
-
-@api.route('/signals/<int:signal_id>/execute', methods=['POST'])
+@bp.route('/signals/<int:signal_id>/execute', methods=['POST'])
 @login_required
 def execute_signal(signal_id):
-    portfolio = Portfolio.query.filter_by(user_id=current_user.id).first()
-    signal = TradingSignal.query.get(signal_id)
-
-    if not portfolio or not signal:
-        return jsonify({'error': 'Signal not found'}), 404
-
     try:
-        executor = OrderExecutor(current_app.db.session, market_data)
-        order = Order(
-            portfolio_id=portfolio.id,
-            symbol=signal.symbol,
-            side=signal.type,
-            type='MARKET',
-            size=signal.recommended_size,
-            status='PENDING'
-        )
+        signal = TradingSignal.query.get(signal_id)
+        if not signal:
+            return jsonify({'error': 'Signal not found'}), 404
+            
+        portfolio = Portfolio.query.filter_by(user_id=current_user.id).first()
+        if not portfolio or signal.portfolio_id != portfolio.id:
+            return jsonify({'error': 'Unauthorized'}), 403
+            
+        if signal.executed:
+            return jsonify({'error': 'Signal already executed'}), 400
+            
+        # Execute the trading signal
+        result = order_executor.execute_signal(signal_id)
         
-        result = executor.execute_order(portfolio, order)
-        signal.active = False
-        current_app.db.session.commit()
+        # Update signal status
+        signal.executed = True
+        signal.status = 'executed'
+        db.session.commit()
         
-        return jsonify(result)
+        return jsonify(result), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 400
